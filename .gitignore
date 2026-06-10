@@ -1,0 +1,7 @@
+scsh.egg-info/
+__pycache__/
+*.pyc
+dist/
+build/
+.pytest_cache/
+*.egg-info/
