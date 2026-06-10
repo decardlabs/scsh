@@ -72,8 +72,9 @@ class TestShellDispatch:
     def test_send_invalid_hex(self, capsys):
         shell = _make_shell()
         shell.execute("send ZZZZ")
-        err = capsys.readouterr().err + capsys.readouterr().out
-        # Should print an error (or at least not crash)
+        captured = capsys.readouterr()
+        combined = captured.out + captured.err
+        assert "invalid" in combined.lower() or "error" in combined.lower() or "Usage" in combined
 
     def test_send_raw_apdu_shorthand(self, capsys):
         shell = _make_shell()
