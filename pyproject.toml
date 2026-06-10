@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "scsh"
+version = "0.1.0"
+description = "Smart Card Shell — 统一的 REPL 交互式智能卡测试工具"
+readme = "README.md"
+requires-python = ">=3.13"
+license = { text = "MIT" }
+authors = [
+    { name = "孙永战" },
+]
+
+dependencies = [
+    "prompt-toolkit>=3.0",
+    "pyscard>=2.1",
+    "rich>=13",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-cov>=5",
+]
+
+[project.scripts]
+scsh = "scsh.main:main"
+
+[tool.setuptools.packages.find]
+include = ["scsh", "scsh.*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
