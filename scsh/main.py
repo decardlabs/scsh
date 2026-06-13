@@ -52,6 +52,7 @@ from scsh.commands.gp import (
     cmd_gp_secure_apdu,
     cmd_gp_mode,
 )
+from scsh.commands.system import cmd_version
 from scsh.transport.pcsc import PCSCTransport
 from scsh.bridge.gp_jar import GPJarBridge
 
@@ -59,6 +60,9 @@ from scsh.bridge.gp_jar import GPJarBridge
 def build_registry() -> CommandRegistry:
     """构建命令注册表，注册所有可用命令。"""
     registry = CommandRegistry()
+
+    # M0 — 系统命令
+    registry.register("version", "显示 scsh 版本信息", cmd_version)
 
     # M1 — 硬件层
     registry.register("readers", "列出所有读卡器", cmd_readers)
