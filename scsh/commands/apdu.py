@@ -132,39 +132,173 @@ def cmd_get_response(args: str, transport: Any) -> None:
 
 
 def cmd_send_file(args: str, transport: Any) -> None:
-    """从文件读取 APDU 并逐条发送。"""
-    if not args:
-        print("用法: send-file <文件路径>")
+    """从文件读取 APDU 并逐条发送。
+    
+    支持格式：
+    - 纯文本：每行一个 APDU 十六进制（支持 # 注释）
+    - JSON：{"apdus": [{"apdu": "00A404...", "delay": 100}]}
+    
+    选项：
+    --continue-on-error  遇到错误继续执行
+    --delay <ms>         每条 APDU 之间延迟（毫秒）
+    --output <file>       保存结果到文件
+    """
+    import re
+    import json
+    import time
+    
+    # 解析参数
+    parts = args.strip().split()
+    path = None
+    continue_on_error = False
+    delay_ms = 0
+    output_file = None
+    
+    for i, part in enumerate(parts):
+        if part == "--continue-on-error":
+            continue_on_error = True
+        elif part == "--delay":
+            if i + 1 < len(parts):
+                try:
+                    delay_ms = int(parts[i + 1])
+                except ValueError:
+                    print(f"无效延迟值: {parts[i + 1]}")
+                    return
+        elif part == "--output":
+            if i + 1 < len(parts):
+                output_file = parts[i + 1]
+        elif path is None:
+            path = part
+    
+    if not path:
+        print("用法: send-file <文件路径> [--continue-on-error] [--delay <ms>] [--output <file>]")
         return
-
-    path = args.strip()
+    
+    # 读取文件
     try:
         with open(path) as f:
-            lines = [line for line in f]
+            content = f.read()
     except FileNotFoundError:
         print(f"文件未找到: {path}")
         return
-
-    for i, line in enumerate(lines, 1):
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#"):
-            continue
-        print(f"[{i}] {stripped}")
+    except OSError as exc:
+        print(f"读取文件失败: {exc}")
+        return
+    
+    # 解析 APDU 列表
+    apdu_list = []
+    
+    # 尝试解析 JSON 格式
+    if content.strip().startswith("{"):
         try:
-            parsed = parse_apdu_hex(stripped)
+            data = json.loads(content)
+            if "apdus" in data:
+                for item in data["apdus"]:
+                    apdu_hex = item["apdu"]
+                    delay = item.get("delay", 0)
+                    apdu_list.append((apdu_hex, delay))
+        except json.JSONDecodeError as exc:
+            print(f"JSON 解析失败: {exc}")
+            return
+    else:
+        # 纯文本格式
+        for line in content.split("\n"):
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            # 支持 delay:100 语法
+            delay = 0
+            if stripped.startswith("delay:"):
+                try:
+                    delay = int(stripped.split(":")[1])
+                    continue
+                except (ValueError, IndexError):
+                    pass
+            apdu_list.append((stripped, delay))
+    
+    if not apdu_list:
+        print("文件中没有找到有效的 APDU")
+        return
+    
+    print(f"共 {len(apdu_list)} 条 APDU")
+    
+    # 打开输出文件
+    output_handle = None
+    if output_file:
+        try:
+            output_handle = open(output_file, "w")
+            output_handle.write(f"# scsh send-file 结果: {path}\n")
+            output_handle.write(f"# 共 {len(apdu_list)} 条 APDU\n\n")
+        except OSError as exc:
+            print(f"无法创建输出文件: {exc}")
+            return
+    
+    # 逐条发送
+    success_count = 0
+    error_count = 0
+    
+    for i, (apdu_hex, item_delay) in enumerate(apdu_list, 1):
+        # 显示进度
+        progress = f"[{i}/{len(apdu_list)}]"
+        print(f"{progress} {apdu_hex}")
+        
+        # 解析 APDU
+        try:
+            parsed = parse_apdu_hex(apdu_hex)
         except ValueError as exc:
-            print(f"  跳过: {exc}")
+            print(f"  ⚠️ 跳过: {exc}")
+            error_count += 1
+            if output_handle:
+                output_handle.write(f"{progress} {apdu_hex} → 错误: {exc}\n")
+            if not continue_on_error:
+                break
             continue
-
-        apdu = bytes([parsed["cla"], parsed["ins"], parsed["p1"], parsed["p2"]])
-        if parsed.get("lc") and parsed.get("data"):
-            apdu += bytes([parsed["lc"]]) + parsed["data"]
+        
+        # 构造 APDU 字节
+        apdu_bytes = bytes([parsed["cla"], parsed["ins"], parsed["p1"], parsed["p2"]])
+        if parsed["data"] is not None:
+            apdu_bytes += bytes([parsed["lc"]]) + parsed["data"]
+        if parsed["le"] is not None:
+            apdu_bytes += bytes([parsed["le"]])
+        
+        # 发送 APDU
         try:
-            data, sw = transport.send_apdu(apdu)
-            print(f"  → {format_response(data, sw)}")
-        except (CardDisconnectedError, TransportError) as exc:
-            print(f"  → 错误: {exc}")
-            break
+            data, sw = transport.send_apdu(apdu_bytes)
+            response = format_response(data, sw)
+            print(f"  → {response}")
+            success_count += 1
+            
+            if output_handle:
+                output_handle.write(f"{progress} {apdu_hex}\n")
+                output_handle.write(f"  → {response}\n\n")
+                
+        except CardDisconnectedError as exc:
+            print(f"  → ❌ 卡片断开: {exc}")
+            error_count += 1
+            if output_handle:
+                output_handle.write(f"{progress} {apdu_hex} → 错误: {exc}\n")
+            if not continue_on_error:
+                break
+        except TransportError as exc:
+            print(f"  → ❌ 传输错误: {exc}")
+            error_count += 1
+            if output_handle:
+                output_handle.write(f"{progress} {apdu_hex} → 错误: {exc}\n")
+            if not continue_on_error:
+                break
+        
+        # 延迟
+        actual_delay = max(delay_ms, item_delay)
+        if actual_delay > 0:
+            time.sleep(actual_delay / 1000.0)
+    
+    # 关闭输出文件
+    if output_handle:
+        output_handle.write(f"\n# 完成: 成功 {success_count}, 失败 {error_count}\n")
+        output_handle.close()
+        print(f"\n结果已保存到: {output_file}")
+    
+    print(f"\n完成: 成功 {success_count}, 失败 {error_count}")
 
 
 # ── M5: 辅助命令 ──────────────────────────────────────────

@@ -147,16 +147,51 @@ class PCSCTransport:
                     f"读卡器索引 {index} 超出范围 (0-{len(readers) - 1})"
                 )
 
+            # 连接 — 逐个尝试协议，验证卡片是否真的能响应
+            # macOS 上部分读卡器+卡片组合在 SCardConnect 成功
+            # 后 SCardTransmit 仍返回 SCARD_E_NOT_TRANSACTED。
+            # 需要实际发一条测试 APDU 确认协议可用。
             reader_name = readers[index]
-
-            # 连接
-            hresult, hcard, protocol = scard.SCardConnect(
-                self._context,
-                reader_name,
-                scard.SCARD_SHARE_SHARED,
-                scard.SCARD_PROTOCOL_T0 | scard.SCARD_PROTOCOL_T1,
-            )
-            _check(hresult, f"连接读卡器 {reader_name} 失败")
+            preferred = [scard.SCARD_PROTOCOL_T0, scard.SCARD_PROTOCOL_T1]
+            hcard = protocol = None
+            last_error: TransportError | None = None
+            for proto in preferred:
+                hresult, hcard, protocol = scard.SCardConnect(
+                    self._context,
+                    reader_name,
+                    scard.SCARD_SHARE_SHARED,
+                    proto,
+                )
+                if hresult != 0:
+                    last_error = TransportError(
+                        f"连接读卡器 {reader_name} 失败 (T={proto}), 错误码: {hresult}"
+                    )
+                    continue
+                # 验证协议：发送空 SELECT 测试卡片是否响应
+                # 用 CLA=00 INS=A4 P1P2=0400 Le=00 探测
+                test_apdu = [0x00, 0xA4, 0x04, 0x00, 0x00]
+                hresult, response = scard.SCardTransmit(hcard, protocol, test_apdu)
+                if hresult == 0:
+                    # T=1 上不应出现 61xx（那是 T=0 的信号），
+                    # 出现说明协议协商与实际不匹配，跳过。
+                    if protocol == scard.SCARD_PROTOCOL_T1:
+                        if len(response) >= 2 and response[-2] == 0x61:
+                            scard.SCardDisconnect(hcard, scard.SCARD_LEAVE_CARD)
+                            hcard = None
+                            continue
+                    # 协议可用，尽管 SW 可能是 6A82 但至少卡片响应了
+                    break
+                # 协议不可用，断开并试下一个
+                scard.SCardDisconnect(hcard, scard.SCARD_LEAVE_CARD)
+                last_error = TransportError(
+                    f"读卡器 {reader_name} T={proto} 连接成功但卡片无响应 "
+                    f"(SCardTransmit: 0x{hresult:08X})"
+                )
+                hcard = None
+            else:
+                raise last_error or TransportError(
+                    f"连接读卡器 {reader_name} 失败"
+                )
 
             self._card = hcard
             self._reader_index = index
@@ -193,7 +228,6 @@ class PCSCTransport:
                 scard.SCARD_LEAVE_CARD,
             )
             _check(hresult, "重连失败")
-
             self._protocol = protocol
             atr, _ = self._get_atr_and_protocol()
             return {"atr": atr, "protocol": protocol}
@@ -265,6 +299,30 @@ class PCSCTransport:
 
             data = response_bytes[:-2]
             sw = (response_bytes[-2] << 8) | response_bytes[-1]
+
+            # T=0: 61xx 表示数据就绪, 自动发送 GET RESPONSE
+            if self._protocol == scard.SCARD_PROTOCOL_T0 and (sw >> 8) == 0x61:
+                le = sw & 0xFF
+                get_resp = [0x00, 0xC0, 0x00, 0x00, le]
+                hresult2, resp2 = scard.SCardTransmit(
+                    self._card, self._protocol, get_resp
+                )
+                if hresult2 == 0:
+                    if isinstance(resp2, (bytes, bytearray)):
+                        r2 = resp2
+                    elif isinstance(resp2, list):
+                        r2 = bytes(resp2)
+                    else:
+                        r2 = b""
+                    if len(r2) >= 2:
+                        data = r2[:-2]
+                        sw = (r2[-2] << 8) | r2[-1]
+                    else:
+                        data = r2
+                        sw = 0
+                else:
+                    return (b"", sw)
+
             return (data, sw)
 
     def close(self) -> None:

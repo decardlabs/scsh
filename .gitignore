@@ -22,3 +22,4 @@ Thumbs.db
 .pytest_cache/
 *.pyc
 .scsh_history
+test_send_file*.py

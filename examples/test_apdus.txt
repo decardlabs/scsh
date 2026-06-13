@@ -1,0 +1,23 @@
+# scsh send-file 测试文件示例
+# 格式：每行一个 APDU 十六进制（支持 # 注释）
+
+# 1. SELECT 命令（选择主 ISD）
+00 A4 04 00 08 A0 00 00 00 03 00 00 00
+
+# 2. GET RESPONSE 命令
+00 C0 00 00 00
+
+# 3. 延迟 500ms 后发送
+delay:500
+
+# 4. SELECT FIDO2Applet
+00 A4 04 00 08 A0 00 00 06 47 2F 00 01
+
+# 5. authenticatorGetInfo (CTAP 0x10)
+00 10 00 00 00
+
+# 6. 无效 APDU（测试错误处理）
+00 XX XX XX  # 这行应该被跳过
+
+# 7. 另一个有效 APDU
+00 A4 04 00 08 A0 00 00 00 03 00 00 00

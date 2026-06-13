@@ -35,6 +35,22 @@ from scsh.commands.gp import (
     cmd_gp_unlock,
     cmd_gp_create,
     cmd_gp_key,
+    # 新增
+    cmd_gp_set_default,
+    cmd_gp_lock_card,
+    cmd_gp_unlock_card,
+    cmd_gp_init_card,
+    cmd_gp_secure_card,
+    cmd_gp_put_key,
+    cmd_gp_delete_key,
+    cmd_gp_store_data,
+    cmd_gp_create_domain,
+    cmd_gp_rename_isd,
+    cmd_gp_load,
+    cmd_gp_uninstall,
+    cmd_gp_set_cplc,
+    cmd_gp_secure_apdu,
+    cmd_gp_mode,
 )
 from scsh.transport.pcsc import PCSCTransport
 from scsh.bridge.gp_jar import GPJarBridge
@@ -71,6 +87,22 @@ def build_registry() -> CommandRegistry:
     registry.register("gp-unlock", "解锁 Applet", cmd_gp_unlock)
     registry.register("gp-create", "创建 Applet 实例", cmd_gp_create)
     registry.register("gp-key", "设置 GP 密钥", cmd_gp_key)
+    # M4 补充——生命周期管理与高级操作
+    registry.register("gp-set-default", "设置默认 Applet（NFC）", cmd_gp_set_default)
+    registry.register("gp-lock-card", "锁定卡片", cmd_gp_lock_card)
+    registry.register("gp-unlock-card", "解锁卡片", cmd_gp_unlock_card)
+    registry.register("gp-init-card", "初始化卡片（OP_READY→INITIALIZED）", cmd_gp_init_card)
+    registry.register("gp-secure-card", "安全化卡片（INITIALIZED→SECURED）", cmd_gp_secure_card)
+    registry.register("gp-put-key", "更新 SCP 密钥", cmd_gp_put_key)
+    registry.register("gp-delete-key", "删除指定版本密钥", cmd_gp_delete_key)
+    registry.register("gp-store-data", "写入个人化数据", cmd_gp_store_data)
+    registry.register("gp-create-domain", "创建补充安全域（SSD）", cmd_gp_create_domain)
+    registry.register("gp-rename-isd", "重命名 ISD AID", cmd_gp_rename_isd)
+    registry.register("gp-load", "仅加载 CAP（不分 INSTALL）", cmd_gp_load)
+    registry.register("gp-uninstall", "卸载 CAP/Package", cmd_gp_uninstall)
+    registry.register("gp-set-cplc", "设置 CPLC 个人化日期", cmd_gp_set_cplc)
+    registry.register("gp-secure-apdu", "通过 SCP 安全通道发送 APDU", cmd_gp_secure_apdu)
+    registry.register("gp-mode", "设置 SCP 安全通道模式", cmd_gp_mode)
 
     # M5 — 辅助功能
     registry.register("repeat", "重复上一条 APDU", cmd_repeat)

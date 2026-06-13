@@ -125,12 +125,230 @@ class GPJarBridge:
 
         return output.strip()
 
-    def install(self, cap_path: str) -> str:
-        """安装 CAP 文件。"""
+    def install(self, cap_path: str, params: str | None = None,
+                privs: str | None = None, make_default: bool = False,
+                force: bool = False) -> str:
+        """安装 CAP 文件。
+
+        Args:
+            cap_path: CAP 文件路径。
+            params: 安装参数（十六进制字符串）。
+            privs: 安装权限（如 CREATABLE, SELECTABLE 等）。
+            make_default: 是否设为默认 Applet。
+            force: 是否强制安装。
+        """
+        args: list[str] = ["--install", cap_path]
+        if params:
+            args.extend(["--params", params])
+        if privs:
+            args.extend(["--privs", privs])
+        if make_default:
+            args.append("--default")
+        if force:
+            args.append("-f")
         try:
-            output = self._run("--install", cap_path)
+            output = self._run(*args)
         except GPBridgeError as exc:
             raise GPBridgeError(f"GP install 失败: {exc}")
+        return output.strip()
+
+    def make_default(self, aid: str) -> str:
+        """设置指定 AID 为默认 Applet（NFC 刷卡自动选择）。"""
+
+        try:
+            output = self._run("--make-default", aid)
+        except GPBridgeError as exc:
+            raise GPBridgeError(f"GP set-default 失败: {exc}")
+        return output.strip()
+
+    def lock_card(self) -> str:
+        """锁定卡片（SECURED → CARD_LOCKED）。"""
+
+        try:
+            output = self._run("--lock-card")
+        except GPBridgeError as exc:
+            raise GPBridgeError(f"GP lock-card 失败: {exc}")
+        return output.strip()
+
+    def unlock_card(self) -> str:
+        """解锁卡片（CARD_LOCKED → SECURED）。"""
+
+        try:
+            output = self._run("--unlock-card")
+        except GPBridgeError as exc:
+            raise GPBridgeError(f"GP unlock-card 失败: {exc}")
+        return output.strip()
+
+    def initialize_card(self) -> str:
+        """初始化卡片（OP_READY → INITIALIZED）。"""
+
+        try:
+            output = self._run("--initialize-card")
+        except GPBridgeError as exc:
+            raise GPBridgeError(f"GP init-card 失败: {exc}")
+        return output.strip()
+
+    def secure_card(self) -> str:
+        """安全化卡片（INITIALIZED → SECURED）。"""
+
+        try:
+            output = self._run("--secure-card")
+        except GPBridgeError as exc:
+            raise GPBridgeError(f"GP secure-card 失败: {exc}")
+        return output.strip()
+
+    def put_key(self, master_key: str | None = None,
+                key_enc: str | None = None, key_mac: str | None = None,
+                key_dek: str | None = None, key_ver: str | None = None,
+                new_key_ver: str | None = None, kdf: str | None = None) -> str:
+        """更新 SCP 密钥。
+
+        Args:
+            master_key: 主密钥（自动派生 ENC/MAC/DEK）。
+            key_enc: 单独指定 ENC 密钥。
+            key_mac: 单独指定 MAC 密钥。
+            key_dek: 单独指定 DEK 密钥。
+            key_ver: 当前密钥版本。
+            new_key_ver: 新密钥版本。
+            kdf: KDF 模板名称。
+        """
+        args: list[str] = []
+        if master_key:
+            args.extend(["--lock", master_key])
+        else:
+            if key_enc:
+                args.extend(["--lock-enc", key_enc])
+            if key_mac:
+                args.extend(["--lock-mac", key_mac])
+            if key_dek:
+                args.extend(["--lock-dek", key_dek])
+        if key_ver:
+            args.extend(["--key-ver", key_ver])
+        if new_key_ver:
+            args.extend(["--new-keyver", new_key_ver])
+        if kdf:
+            args.extend(["--lock-kdf", kdf])
+        try:
+            output = self._run(*args)
+        except GPBridgeError as exc:
+            raise GPBridgeError(f"GP put-key 失败: {exc}")
+        return output.strip()
+
+    def delete_key(self, ver: str) -> str:
+        """删除指定版本的密钥。"""
+
+        try:
+            output = self._run("--delete-key", ver)
+        except GPBridgeError as exc:
+            raise GPBridgeError(f"GP delete-key 失败: {exc}")
+        return output.strip()
+
+    def store_data(self, data_hex: str) -> str:
+        """写入个人化数据（GP STORE DATA）。"""
+
+        try:
+            output = self._run("--store-data", data_hex)
+        except GPBridgeError as exc:
+            raise GPBridgeError(f"GP store-data 失败: {exc}")
+        return output.strip()
+
+    def store_data_chunk(self, data_hex: str) -> str:
+        """分块写入 STORE DATA（大数据场景）。"""
+
+        try:
+            output = self._run("--store-data-chunk", data_hex)
+        except GPBridgeError as exc:
+            raise GPBridgeError(f"GP store-data-chunk 失败: {exc}")
+        return output.strip()
+
+    def create_domain(self, aid: str) -> str:
+        """创建补充安全域（SSD）。"""
+
+        try:
+            output = self._run("--domain", aid)
+        except GPBridgeError as exc:
+            raise GPBridgeError(f"GP create-domain 失败: {exc}")
+        return output.strip()
+
+    def rename_isd(self, new_aid: str) -> str:
+        """重命名 ISD AID。"""
+
+        try:
+            output = self._run("--rename-isd", new_aid)
+        except GPBridgeError as exc:
+            raise GPBridgeError(f"GP rename-isd 失败: {exc}")
+        return output.strip()
+
+    def load(self, cap_path: str) -> str:
+        """仅加载 CAP 文件到卡片（不 INSTALL，分步操作）。"""
+
+        try:
+            output = self._run("--load", cap_path)
+        except GPBridgeError as exc:
+            raise GPBridgeError(f"GP load 失败: {exc}")
+        return output.strip()
+
+    def uninstall(self, target: str) -> str:
+        """卸载 CAP 文件（需指定 CAP 路径或 AID）。"""
+
+        try:
+            output = self._run("--uninstall", target)
+        except GPBridgeError as exc:
+            raise GPBridgeError(f"GP uninstall 失败: {exc}")
+        return output.strip()
+
+    def set_cplc(self, pre_perso: str | None = None,
+                  perso: str | None = None, today: bool = False) -> str:
+        """设置 CPLC 个人化数据。
+
+        Args:
+            pre_perso: PrePerso 日期（十六进制，6 字节）。
+            perso: Perso 日期（十六进制，6 字节）。
+            today: 自动使用今天日期。
+        """
+        args: list[str] = []
+        if pre_perso:
+            args.extend(["--set-pre-perso", pre_perso])
+        if perso:
+            args.extend(["--set-perso", perso])
+        if today:
+            args.append("--today")
+        if not args:
+            raise GPBridgeError("set_cplc: 至少需要指定一个参数")
+        try:
+            output = self._run(*args)
+        except GPBridgeError as exc:
+            raise GPBridgeError(f"GP set-cplc 失败: {exc}")
+        return output.strip()
+
+    def send_secure_apdu(self, apdu_hex: str) -> str:
+        """通过 SCP 安全通道发送 APDU。"""
+
+        try:
+            output = self._run("--secure-apdu", apdu_hex)
+        except GPBridgeError as exc:
+            raise GPBridgeError(f"GP secure-apdu 失败: {exc}")
+        return output.strip()
+
+    def set_mode(self, mode: str) -> str:
+        """设置 SCP 安全通道模式。
+
+        Args:
+            mode: 模式字符串，如 "MAC", "ENC", "RMAC", "CLR" 或组合。
+        """
+        try:
+            output = self._run("--mode", mode)
+        except GPBridgeError as exc:
+            raise GPBridgeError(f"GP set-mode 失败: {exc}")
+        return output.strip()
+
+    def set_scp(self, scp_type: str) -> str:
+        """设置 SCP 类型（SCP02/SCP03）。"""
+
+        try:
+            output = self._run("--scp", scp_type)
+        except GPBridgeError as exc:
+            raise GPBridgeError(f"GP set-scp 失败: {exc}")
         return output.strip()
 
     def delete(self, aid: str) -> str:

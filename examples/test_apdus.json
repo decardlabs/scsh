@@ -1,0 +1,23 @@
+{
+  "description": "scsh send-file JSON 格式测试文件示例",
+  "apdus": [
+    {
+      "apdu": "00A4040008A000000003000000",
+      "description": "SELECT 主 ISD"
+    },
+    {
+      "apdu": "00C0000000",
+      "description": "GET RESPONSE",
+      "delay": 100
+    },
+    {
+      "apdu": "00A4040008A0000006472F0001",
+      "description": "SELECT FIDO2Applet",
+      "delay": 200
+    },
+    {
+      "apdu": "0010000000",
+      "description": "authenticatorGetInfo"
+    }
+  ]
+}
