@@ -454,7 +454,7 @@ class GPJarBridge:
             "key_version": None,
             "security_level": None,
             "cplc": {},
-            "card_data": {},
+            "card_data": [],
             "card_capabilities": [],
         }
 
@@ -506,18 +506,19 @@ class GPJarBridge:
 
             # ── Card Data: Tag OID 行 ──
             if in_card_data:
-                # Tag XX: OID
                 tag_match = re.match(r"Tag\s+(\d+[A-Za-z]?):\s+([\d.]+)", stripped)
                 if tag_match:
                     tag_val = tag_match.group(1)
                     oid = tag_match.group(2)
-                    result["card_data"][f"Tag_{tag_val}"] = oid
+                    result["card_data"].append({"tag": tag_val, "oid": oid, "desc": ""})
                     continue
                 # 下一行 -> 描述文字
                 desc_match = re.match(r"->\s*(.+)", stripped)
                 if desc_match:
-                    # 关联到上一个 Tag
                     desc = desc_match.group(1)
+                    # 回填到上一条 Card Data entry
+                    if result["card_data"]:
+                        result["card_data"][-1]["desc"] = desc
                     if "GP Version:" in desc:
                         result["gp_version"] = desc.split("GP Version:")[-1].strip()
                     if "JavaCard" in desc or "Java Card" in desc:

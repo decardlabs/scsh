@@ -97,6 +97,47 @@ def cmd_gp_info(args: str, session: Session) -> None:
         print(line)
 
 
+# ── CPLC 厂商名称映射 ──────────────────────────────────────
+
+IC_FABRICATOR_NAMES = {
+    "0081": "NXP (原 Philips)",
+    "4470": "Infineon (原 Siemens)",
+    "4250": "Samsung",
+    "4950": "STMicroelectronics",
+    "0440": "Renesas",
+    "0040": "Toshiba",
+    "2070": "Gemalto / Thales",
+    "1090": "IBM",
+    "4254": "SK Hynix",
+    "0090": "G&D (Giesecke & Devrient)",
+    "5010": "Goldpac",
+    "FFFF": "测试芯片",
+}
+
+OS_ID_NAMES = {
+    "0081": "JCOP (NXP)",
+    "4470": "Infineon OS",
+    "4250": "Samsung OS",
+    "4950": "ST OS",
+}
+
+ICC_MANUFACTURER_NAMES = {
+    "0081": "NXP",
+    "4470": "Infineon",
+    "4250": "Samsung",
+    "4950": "STMicroelectronics",
+    "2070": "Gemalto / Thales",
+    "0090": "G&D",
+    "5010": "Goldpac",
+}
+
+
+def _lookup_name(mapping: dict[str, str], val: str) -> str:
+    """查找厂商名，找不到则原样返回。"""
+    name = mapping.get(val)
+    return f"{val} ({name})" if name else val
+
+
 def _format_gp_info(result: dict) -> list[str]:
     """格式化 gp-info 输出为行列表。"""
     lines: list[str] = []
@@ -119,22 +160,41 @@ def _format_gp_info(result: dict) -> list[str]:
     if cplc:
         lines.append("")
         lines.append("CPLC (卡片生产信息):")
-        for key, cplc_label in [
-            ("ICSerialNumber", "芯片序列号"),
-            ("ICFabricator", "制造商"),
-            ("ICType", "芯片型号"),
-            ("OperatingSystemID", "OS ID"),
-            ("OperatingSystemReleaseDate", "OS 发布日期"),
-            ("OperatingSystemReleaseLevel", "OS 版本"),
-            ("ICFabricationDate", "生产日期"),
-            ("ICBatchIdentifier", "批次号"),
-            ("ICCManufacturer", "卡片制造商"),
-            ("ICPrePersonalizer", "预个人化方"),
-            ("ICPersonalizer", "个人化方"),
+        for key, cplc_label, lookup in [
+            ("ICSerialNumber", "芯片序列号", None),
+            ("ICFabricator", "制造商", IC_FABRICATOR_NAMES),
+            ("ICType", "芯片型号", None),
+            ("OperatingSystemID", "OS ID", OS_ID_NAMES),
+            ("OperatingSystemReleaseDate", "OS 发布日期", None),
+            ("OperatingSystemReleaseLevel", "OS 版本", None),
+            ("ICFabricationDate", "生产日期", None),
+            ("ICBatchIdentifier", "批次号", None),
+            ("ICCManufacturer", "卡片制造商", ICC_MANUFACTURER_NAMES),
+            ("ICPrePersonalizer", "预个人化方", None),
+            ("ICPersonalizer", "个人化方", None),
         ]:
             val = cplc.get(key)
             if val:
-                lines.append(f"  {cplc_label}: {val}")
+                if lookup:
+                    display = _lookup_name(lookup, val)
+                else:
+                    display = val
+                lines.append(f"  {cplc_label}: {display}")
+
+    # Card Data
+    card_data = result.get("card_data", [])
+    if card_data:
+        lines.append("")
+        lines.append("Card Data:")
+        for entry in card_data:
+            tag = entry["tag"]
+            oid = entry["oid"]
+            desc = entry.get("desc", "")
+            if desc:
+                lines.append(f"  Tag {tag}:  {oid}")
+                lines.append(f"    → {desc}")
+            else:
+                lines.append(f"  Tag {tag}:  {oid}")
 
     # Card Capabilities
     caps = result.get("card_capabilities", [])

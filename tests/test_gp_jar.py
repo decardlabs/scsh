@@ -160,6 +160,22 @@ class TestGPInfoParsing:
         assert result["cplc"]["ICFabricator"] == "0081"
         assert result["card_capabilities"][0]["type"] == "DES3"
         assert result["card_capabilities"][0]["length"] == 16
+        # card_data 列表结构
+        assert result["card_data"][0]["tag"] == "6"
+        assert result["card_data"][0]["oid"] == "1.2.840.114283.1"
+        assert result["card_data"][0]["desc"] == "Global Platform card"
+        assert result["card_data"][1]["tag"] == "60"
+        assert result["card_data"][1]["oid"] == "1.2.840.114283.2.2.1.1"
+        assert result["card_data"][1]["desc"] == "GP Version: 2.1.1"
+        assert result["card_data"][2]["tag"] == "63"
+        assert result["card_data"][2]["desc"] == (
+            "GP card is uniquely identified by the Issuer Identification "
+            "Number (IIN) and Card Image Number (CIN)"
+        )
+        assert result["card_data"][3]["tag"] == "6"
+        assert result["card_data"][3]["desc"] == "GP SCP02 (i=55)"
+        assert result["card_data"][4]["tag"] == "66"
+        assert result["card_data"][4]["desc"] == "JavaCard v2"
 
     def test_parse_list_state(self, mock_subprocess_run):
         """解析 gp --list 中的 ISD 状态。"""

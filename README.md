@@ -82,7 +82,7 @@ ATR: 3B8F80018665FF0B080118000000000000900098
 | 命令 | 功能 |
 |------|------|
 | `gp-list` | 列出已安装的 ISD/Package/Applet（含 ISD 状态） |
-| `gp-info` | 显示 GP 详细信息（SCP、CPLC、Card Data、Capabilities） |
+| `gp-info` | 显示 GP 详细信息（SCP、CPLC 厂商名翻译、Card Data OID 表、密钥能力） |
 | `gp-aid <alias> <AID>` | 注册 AID 别名 |
 | `gp-scp` | 查看安全通道信息 |
 | `gp-status` | 查询卡片生命周期 |
