@@ -112,6 +112,7 @@ ATR: 3B8F80018665FF0B080118000000000000900098
 | `gp-set-cplc <date>` | 设置 CPLC 个人化日期 |
 | `gp-secure-apdu <hex>` | 通过 SCP 安全通道发送 APDU |
 | `gp-mode <mode>` | 设置 SCP 安全通道模式 |
+| `gp-make-selectable <aid>` | 将已安装 Applet 设为可选 |
 
 > **注意**: GP 命令需要安装 Java Runtime，scsh 会自动搜索 `gp.jar`（搜索顺序：PATH → tools/ → 当前目录）。
 

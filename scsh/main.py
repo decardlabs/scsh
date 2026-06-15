@@ -104,6 +104,7 @@ def build_registry() -> "CommandRegistry":
         cmd_gp_set_cplc,
         cmd_gp_secure_apdu,
         cmd_gp_mode,
+        cmd_gp_make_selectable,
     )
     from scsh.commands.system import cmd_version
 
@@ -154,6 +155,7 @@ def build_registry() -> "CommandRegistry":
     registry.register("gp-set-cplc", "设置 CPLC 个人化日期", cmd_gp_set_cplc)
     registry.register("gp-secure-apdu", "通过 SCP 安全通道发送 APDU", cmd_gp_secure_apdu)
     registry.register("gp-mode", "设置 SCP 安全通道模式", cmd_gp_mode)
+    registry.register("gp-make-selectable", "将已安装 Applet 设为可选", cmd_gp_make_selectable)
 
     # M5 — 辅助功能
     registry.register("repeat", "重复上一条 APDU", cmd_repeat)

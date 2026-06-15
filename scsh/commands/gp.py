@@ -687,3 +687,29 @@ def cmd_gp_mode(args: str, session: Session, bridge: Any) -> None:
 
     bridge.set_mode(args.strip())
     print(f"SCP 模式已设置为: {args.strip()}")
+
+
+@gp_command
+def cmd_gp_make_selectable(args: str, session: Session, bridge: Any) -> None:
+    """将已安装的 Applet 设为可选（INSTALL for make selectable）。
+
+    部分卡片（如 GP 2.1.1 T=0）不支持 gp-install 的合一命令，
+    需安装后单独执行此命令。
+
+    Usage:
+        gp-make-selectable <AID>
+    """
+    if not args:
+        print("用法: gp-make-selectable <AID>")
+        return
+
+    aid = _resolve_aid(args, session)
+    aid_bytes = bytes.fromhex(aid)
+    apdu_hex = f"84E60800{len(aid_bytes):02X}{aid}"
+    try:
+        bridge.send_secure_apdu(apdu_hex)
+    except GPBridgeError as exc:
+        print(f"make-selectable 失败: {exc}")
+        return
+
+    print(f"Applet {aid} 已设为可选")

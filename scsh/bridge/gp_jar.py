@@ -129,10 +129,36 @@ class GPJarBridge:
 
         return output.strip()
 
+    @staticmethod
+    def _parse_cap_aids(cap_path: str) -> tuple[str, str]:
+        """从 CAP 文件（ZIP）中提取 Package AID 和 Applet AID。
+
+        Returns:
+            (pkg_aid_hex, applet_aid_hex)
+        """
+        import zipfile
+
+        with zipfile.ZipFile(cap_path) as z:
+            # Header.cap: tag(1) + len(2) + magic(4) + ver(2) + flags(2) + aid_len + aid
+            hdr = z.read("com/example/javacard/Header.cap")
+            pkg_len = hdr[8]
+            pkg_aid = hdr[9:9 + pkg_len].hex().upper()
+
+            # Applet.cap: tag(1) + len(2) + count(1) + aid_len + aid + class_ref(2)
+            app = z.read("com/example/javacard/Applet.cap")
+            app_len = app[4]
+            applet_aid = app[5:5 + app_len].hex().upper()
+
+        return pkg_aid, applet_aid
+
     def install(self, cap_path: str, params: str | None = None,
                 privs: str | None = None, make_default: bool = False,
                 force: bool = False) -> str:
         """安装 CAP 文件。
+
+        先尝试组合式 --install（LOAD + INSTALL + make-selectable）。
+        如果卡片不支持合一命令（INSTALL 失败 6985），
+        返回提示信息而非抛出异常（CAP 已加载但 Applet 未注册）。
 
         Args:
             cap_path: CAP 文件路径。
@@ -152,9 +178,15 @@ class GPJarBridge:
             args.append("-f")
         try:
             output = self._run(*args)
+            return output.strip()
         except GPBridgeError as exc:
+            error_msg = str(exc)
+            # 6985 on INSTALL [for install and make selectable]:
+            # 卡片不支持合一命令，CAP 可能已加载但 Applet 未安装
+            if "6985" in error_msg and "INSTALL [for install" in error_msg:
+                return "CAP 已加载到卡片，但此卡不支持 make-selectable。\nApplet 可能未成功注册，请用 gp-list 确认。"
+
             raise GPBridgeError(f"GP install 失败: {exc}")
-        return output.strip()
 
     def make_default(self, aid: str) -> str:
         """设置指定 AID 为默认 Applet（NFC 刷卡自动选择）。"""
