@@ -109,7 +109,10 @@ def parse_apdu_hex(hex_str: str) -> dict[str, Any]:
         # Case 1: CLA INS P1 P2
         return result
 
-    # 检查扩展 Lc (3字节, 第一字节为 0x00 表示扩展)
+    # 检查扩展 Lc (第一字节为 0x00 表示扩展 Lc/Le)
+    # 注意: raw[4] == 0x00 可能是:
+    #   Case 2: CLA INS P1 P2 Le(=0x00, 表示 256 字节) — len(raw) == 5
+    #   扩展 Lc: CLA INS P1 P2 0x00 2-byte-len — len(raw) > 6
     if raw[4] == 0x00 and len(raw) > 6:
         # 扩展 Lc/Le
         if len(raw) >= 7:

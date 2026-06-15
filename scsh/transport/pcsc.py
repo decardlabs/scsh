@@ -72,12 +72,13 @@ class PCSCTransport:
         # SCardStatus 返回格式因平台/版本而异:
         #   (hresult, reader, state, protocol, atr) — tuple 或 list
         #   atr 可能是 bytes 或 [int, int, ...]
-        if isinstance(result, (tuple, list)) and len(result) >= 4:
-            hresult = result[0]
-            protocol = result[3] if len(result) >= 4 else 0
-            atr_raw = result[4] if len(result) >= 5 else b""
-        else:
-            raise TransportError(f"SCardStatus 返回格式异常: {result}")
+        if not isinstance(result, (tuple, list)):
+            raise TransportError(f"SCardStatus 返回类型异常: {type(result)}")
+        if len(result) < 4:
+            raise TransportError(f"SCardStatus 返回字段不足: {len(result)}")
+        hresult = result[0]
+        protocol = int(result[3]) if len(result) >= 4 else 0
+        atr_raw = result[4] if len(result) >= 5 else b""
         _check(hresult, "获取卡片状态失败")
         atr = bytes(atr_raw) if isinstance(atr_raw, (list, bytes, bytearray)) else b""
         return atr, protocol

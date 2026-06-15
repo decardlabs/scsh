@@ -145,17 +145,17 @@ class TestSendAPDU:
 
     def test_transmit_failure(self, mock_scard, transport):
         """发送失败时抛出 TransportError。"""
-        mock_scard.SCardTransmit.return_value = (6, None)
         transport.connect(0)
+        mock_scard.SCardTransmit.return_value = (6, None)
         with pytest.raises(TransportError, match="APDU 发送失败"):
             transport.send_apdu(b"\x00\xA4\x04\x00\x00")
 
     def test_card_disconnected_during_send(self, mock_scard, transport):
         """发送时卡片拔出抛出 CardDisconnectedError。"""
+        transport.connect(0)
         mock_scard.SCardTransmit.side_effect = Exception(
             "The smart card has been removed"
         )
-        transport.connect(0)
         with pytest.raises(CardDisconnectedError):
             transport.send_apdu(b"\x00\xA4\x04\x00\x00")
 

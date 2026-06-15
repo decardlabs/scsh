@@ -9,8 +9,10 @@ from __future__ import annotations
 import shlex
 from typing import Any, Callable
 
+from scsh.session import Session
 
-HandlerFunc = Callable[[str, Any], None]
+
+HandlerFunc = Callable[[str, Session], None]
 
 
 class Command:
@@ -71,13 +73,13 @@ class CommandRegistry:
         args = parts[1] if len(parts) > 1 else ""
         return (name, args)
 
-    def execute(self, name: str, args: str, transport: Any) -> None:
+    def execute(self, name: str, args: str, session: Session) -> None:
         """执行指定命令。
 
         Args:
             name: 命令名。
             args: 参数字符串。
-            transport: PCSCTransport 实例，传递给命令 handler。
+            session: 会话对象，传递给命令 handler。
         """
         name = name.strip()
         if not name:
@@ -92,7 +94,7 @@ class CommandRegistry:
             print(f"未知命令: {name}。输入 help 查看可用命令。")
             return
 
-        cmd.handler(args, transport)
+        cmd.handler(args, session)
 
     def _do_help(self, topic: str) -> None:
         """处理 help 命令。"""

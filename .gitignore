@@ -23,3 +23,5 @@ Thumbs.db
 *.pyc
 .scsh_history
 test_send_file*.py
+gp.jar
+tools/gp.jar

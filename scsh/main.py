@@ -55,6 +55,7 @@ from scsh.commands.gp import (
 from scsh.commands.system import cmd_version
 from scsh.transport.pcsc import PCSCTransport
 from scsh.bridge.gp_jar import GPJarBridge
+from scsh.session import Session
 
 
 def build_registry() -> CommandRegistry:
@@ -145,7 +146,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def execute_script(path: str, registry: CommandRegistry, transport: Any) -> None:
+def execute_script(path: str, registry: CommandRegistry, session: Session) -> None:
     """执行脚本文件中的命令。"""
     with open(path) as f:
         for line in f:
@@ -153,7 +154,7 @@ def execute_script(path: str, registry: CommandRegistry, transport: Any) -> None
             if not stripped or stripped.startswith("#"):
                 continue
             name, args = registry.parse_line(stripped)
-            registry.execute(name, args, transport)
+            registry.execute(name, args, session)
 
 
 def main() -> None:
@@ -164,27 +165,24 @@ def main() -> None:
     # 在 scsh 项目目录查找 gp.jar
     import os
     scsh_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    gp_jar_path = os.path.join(scsh_dir, "gp.jar")
-    if os.path.isfile(gp_jar_path):
-        transport.gp_bridge = GPJarBridge(jar_path=gp_jar_path)
-    else:
-        transport.gp_bridge = GPJarBridge()
-    transport._aid_aliases = {}
+    gp_jar_path = os.path.join(scsh_dir, "tools", "gp.jar")
+    gp_bridge = GPJarBridge(jar_path=gp_jar_path) if os.path.isfile(gp_jar_path) else GPJarBridge()
+    session = Session(transport=transport, gp_bridge=gp_bridge)
     registry = build_registry()
 
     if args.command:
         name, cmd_args = registry.parse_line(args.command)
-        registry.execute(name, cmd_args, transport)
+        registry.execute(name, cmd_args, session)
         return
 
     if args.file:
-        execute_script(args.file, registry, transport)
+        execute_script(args.file, registry, session)
         return
 
     # 交互式 REPL
     from scsh.repl import ScshRepl
 
-    repl = ScshRepl(registry=registry, transport=transport)
+    repl = ScshRepl(registry=registry, session=session)
     repl.run()
 
 

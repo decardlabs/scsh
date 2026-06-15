@@ -19,16 +19,35 @@ ISD: A000000003000000 (OP_READY)
     Applet: A00000000300000101 (SELECTABLE)
 """
 
-GP_INFO_OUTPUT = """# GlobalPlatformPro 25.10
-ISD: A000000003000000
-  CPLC:
-    IC Fabricator: 4799
-    IC Type: 0001
-    ROM Key: 0000
-  GP Version: 2.1.1
-  SCP: 02 (i=15)
-  Key Version: 0
-  Security Level: MAC
+GP_INFO_OUTPUT = """# GlobalPlatformPro v25.10.20
+# Running on Mac OS X 26.5.1 aarch64, Java 21.0.10 by Homebrew
+CPLC: ICFabricator=0081
+      ICType=0017
+      OperatingSystemID=0081
+      OperatingSystemReleaseDate=2243 (2022-08-31)
+      OperatingSystemReleaseLevel=33C0
+      ICFabricationDate=2302 (2022-10-29)
+      ICSerialNumber=BEFB8A64
+
+IIN: 42045F49494E
+CIN: 4502303A
+KDD: CF0A00002302BEFB8A643435
+SSC: C1020005
+
+Card Data:
+Tag 6: 1.2.840.114283.1
+-> Global Platform card
+Tag 60: 1.2.840.114283.2.2.1.1
+-> GP Version: 2.1.1
+Tag 63: 1.2.840.114283.3
+-> GP card is uniquely identified by the Issuer Identification Number (IIN) and Card Image Number (CIN)
+Tag 6: 1.2.840.114283.4.2.85
+-> GP SCP02 (i=55)
+Tag 66: 1.3.6.1.4.1.42.2.110.1.2
+-> JavaCard v2
+
+Card Capabilities:
+Version: 255 (0xFF) ID:   1 (0x01) type: DES3         length:  16 (factory key)
 """
 
 GP_LIST_EMPTY_OUTPUT = """# GlobalPlatformPro 25.10
@@ -136,7 +155,21 @@ class TestGPInfoParsing:
 
         assert result["scp"] == "02"
         assert result["gp_version"] == "2.1.1"
-        assert result["key_version"] == "0"
+        assert result["jc_version"] == "JavaCard v2"
+        assert result["cplc"]["ICSerialNumber"] == "BEFB8A64"
+        assert result["cplc"]["ICFabricator"] == "0081"
+        assert result["card_capabilities"][0]["type"] == "DES3"
+        assert result["card_capabilities"][0]["length"] == 16
+
+    def test_parse_list_state(self, mock_subprocess_run):
+        """解析 gp --list 中的 ISD 状态。"""
+        mock_subprocess_run.return_value = _make_result(GP_LIST_OUTPUT)
+        from scsh.bridge.gp_jar import GPJarBridge
+        bridge = GPJarBridge()
+        result = bridge.list()
+
+        assert result["isd"] == "A000000003000000"
+        assert result["isd_state"] == "OP_READY"
 
 
 class TestGPExecute:

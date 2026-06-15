@@ -23,7 +23,10 @@ class GPJarBridge:
 
     @staticmethod
     def _find_jar() -> str:
-        """在系统路径中查找 gp.jar。"""
+        """在系统路径中查找 gp.jar。
+
+        搜索顺序：PATH → 常见安装路径 → 项目 tools/ 目录 → 当前目录。
+        """
         path = shutil.which("gp.jar")
         if path:
             return path
@@ -32,10 +35,11 @@ class GPJarBridge:
             "/usr/local/bin/gp.jar",
             "/opt/homebrew/bin/gp.jar",
             os.path.expanduser("~/.local/bin/gp.jar"),
+            "tools/gp.jar",
             "gp.jar",
         ]
         for c in candidates:
-            if shutil.which(c) or c == "gp.jar":
+            if os.path.isfile(c):
                 return c
         return "gp.jar"
 
@@ -388,6 +392,7 @@ class GPJarBridge:
         """
         result: dict[str, Any] = {
             "isd": None,
+            "isd_state": None,
             "packages": [],
         }
 
@@ -403,9 +408,13 @@ class GPJarBridge:
 
             # ISD: AID (STATE)
             if stripped.startswith("ISD:") and not stripped.startswith("  "):
-                parts = stripped[4:].strip().split()
-                aid = parts[0] if parts else None
-                result["isd"] = aid
+                isd_match = re.match(
+                    r"ISD:\s*([0-9A-Fa-f]+)\s*(?:\((\w+)\))?",
+                    stripped,
+                )
+                if isd_match:
+                    result["isd"] = isd_match.group(1)
+                    result["isd_state"] = isd_match.group(2) or None
                 current_pkg = None
                 continue
 
@@ -434,28 +443,112 @@ class GPJarBridge:
 
     @staticmethod
     def _parse_info_output(output: str) -> dict[str, Any]:
-        """解析 gp --info 输出。"""
+        """解析 gp --info 输出。
+
+        CPLC / Card Data / Card Capabilities 均提取到结果中。
+        """
         result: dict[str, Any] = {
             "scp": None,
             "gp_version": None,
+            "jc_version": None,
             "key_version": None,
             "security_level": None,
+            "cplc": {},
+            "card_data": {},
+            "card_capabilities": [],
         }
+
+        in_cplc = False
+        in_card_data = False
+        in_card_caps = False
 
         for line in output.splitlines():
             stripped = line.strip()
             if stripped.startswith("#"):
                 continue
 
-            if "SCP:" in stripped:
+            # ── 分区检测 ──
+            if stripped.startswith("CPLC:"):
+                in_cplc = True
+                in_card_data = False
+                in_card_caps = False
+                # "CPLC:" 后的第一个 key=value 可能在同一行
+                rest = stripped[5:].strip()
+                if "=" in rest:
+                    k, _, v = rest.partition("=")
+                    result["cplc"][k.strip()] = v.strip()
+                continue
+
+            if stripped.startswith("Card Data:"):
+                in_cplc = False
+                in_card_data = True
+                in_card_caps = False
+                continue
+
+            if stripped.startswith("Card Capabilities:"):
+                in_cplc = False
+                in_card_data = False
+                in_card_caps = True
+                continue
+
+            # ── 通用行跳过 ──
+            if stripped in ("IIN:", "CIN:", "KDD:", "SSC:"):
+                in_cplc = False
+                in_card_data = False
+                in_card_caps = False
+                continue
+
+            # ── CPLC 数据: 空格缩进后的 key=value ──
+            if in_cplc and "=" in stripped:
+                k, _, v = stripped.partition("=")
+                result["cplc"][k.strip()] = v.strip()
+                continue
+
+            # ── Card Data: Tag OID 行 ──
+            if in_card_data:
+                # Tag XX: OID
+                tag_match = re.match(r"Tag\s+(\d+[A-Za-z]?):\s+([\d.]+)", stripped)
+                if tag_match:
+                    tag_val = tag_match.group(1)
+                    oid = tag_match.group(2)
+                    result["card_data"][f"Tag_{tag_val}"] = oid
+                    continue
+                # 下一行 -> 描述文字
+                desc_match = re.match(r"->\s*(.+)", stripped)
+                if desc_match:
+                    # 关联到上一个 Tag
+                    desc = desc_match.group(1)
+                    if "GP Version:" in desc:
+                        result["gp_version"] = desc.split("GP Version:")[-1].strip()
+                    if "JavaCard" in desc or "Java Card" in desc:
+                        result["jc_version"] = desc.strip()
+                    if "SCP" in desc:
+                        scp_m = re.search(r"SCP(\d+)", desc)
+                        if scp_m:
+                            result["scp"] = scp_m.group(1)
+                    continue
+
+            # ── Card Capabilities: 密钥行 ──
+            if in_card_caps:
+                cap_match = re.match(
+                    r"Version:\s*(\d+)(?:\s*\([^)]+\))?\s+ID:\s*(\d+)(?:\s*\([^)]+\))?\s+type:\s*(\S+)\s+length:\s*(\d+)",
+                    stripped,
+                )
+                if cap_match:
+                    result["card_capabilities"].append({
+                        "version": int(cap_match.group(1)),
+                        "id": int(cap_match.group(2)),
+                        "type": cap_match.group(3),
+                        "length": int(cap_match.group(4)),
+                        "note": cap_match.group(5) if cap_match.lastindex and cap_match.lastindex >= 5 else "",
+                    })
+                    continue
+
+            # ── 散落字段 ──
+            if "SCP:" in stripped and not in_cplc:
                 m = re.search(r"SCP:\s*(\S+)", stripped)
                 if m:
                     result["scp"] = m.group(1)
-
-            if "GP Version:" in stripped:
-                m = re.search(r"GP Version:\s*(\S+)", stripped)
-                if m:
-                    result["gp_version"] = m.group(1)
 
             if "Key Version:" in stripped:
                 m = re.search(r"Key Version:\s*(\S+)", stripped)

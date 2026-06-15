@@ -2,23 +2,51 @@
 
 from __future__ import annotations
 
+import functools
 from typing import Any
 
 from scsh.exceptions import GPBridgeError
+from scsh.session import Session
 
 
-def _get_bridge(transport: Any) -> Any | None:
+def _get_bridge(session: Session) -> Any | None:
     """获取 GP bridge 对象或 None。"""
-    bridge = getattr(transport, "gp_bridge", None)
+    bridge = getattr(session, "gp_bridge", None)
     if bridge is None:
         print("GP 桥接未就绪。需要安装 Java 和 GlobalPlatformPro (gp.jar)。")
         return None
     return bridge
 
 
-def cmd_gp_list(args: str, transport: Any) -> None:
+def _resolve_aid(args: str, session: Session) -> str:
+    """解析 AID 参数，支持别名展开。
+
+    如果 args 是已注册的别名，返回对应的 AID；否则原样返回。
+    """
+    aliases = getattr(session, "aid_aliases", {})
+    return aliases.get(args.strip(), args.strip())
+
+
+def gp_command(func):
+    """装饰器：自动获取 bridge 并捕获 GPBridgeError。
+
+    被装饰的命令函数接收 (args, session, bridge) 而非 (args, session)。
+    """
+    @functools.wraps(func)
+    def wrapper(args: str, session: Session) -> None:
+        bridge = _get_bridge(session)
+        if not bridge:
+            return
+        try:
+            func(args, session, bridge)
+        except GPBridgeError as exc:
+            print(f"{func.__name__} 失败: {exc}")
+    return wrapper
+
+
+def cmd_gp_list(args: str, session: Session) -> None:
     """列出已安装的 ISD / Package / Applet。"""
-    bridge = _get_bridge(transport)
+    bridge = _get_bridge(session)
     if not bridge:
         return
 
@@ -28,24 +56,34 @@ def cmd_gp_list(args: str, transport: Any) -> None:
         print(f"GP list 失败: {exc}")
         return
 
-    print("已安装内容:")
+    for line in _format_gp_list(result):
+        print(line)
+
+
+def _format_gp_list(result: dict) -> list[str]:
+    """格式化 gp-list 输出为行列表。"""
+    lines: list[str] = []
+
     if result["isd"]:
-        print(f"  ISD: {result['isd']}")
+        state_str = f" ({result['isd_state']})" if result.get("isd_state") else ""
+        lines.append(f"ISD: {result['isd']}{state_str}")
 
     for pkg in result["packages"]:
         state_str = f" ({pkg['state']})" if pkg['state'] else ""
-        print(f"  ├─ PKG: {pkg['aid']}{state_str}")
+        lines.append(f"  PKG: {pkg['aid']}{state_str}")
         for app in pkg["applets"]:
             app_state = f" ({app['state']})" if app['state'] else ""
-            print(f"  │  └─ Applet: {app['aid']}{app_state}")
+            lines.append(f"    Applet: {app['aid']}{app_state}")
 
-    if not result["packages"]:
-        print("  (无已安装内容)")
+    if not result["packages"] and not result.get("isd"):
+        lines.append("(卡片未检测到或无已安装内容)")
+
+    return lines
 
 
-def cmd_gp_info(args: str, transport: Any) -> None:
+def cmd_gp_info(args: str, session: Session) -> None:
     """显示 GP 详细信息。"""
-    bridge = _get_bridge(transport)
+    bridge = _get_bridge(session)
     if not bridge:
         return
 
@@ -55,18 +93,65 @@ def cmd_gp_info(args: str, transport: Any) -> None:
         print(f"GP info 失败: {exc}")
         return
 
-    for key, label in [
-        ("gp_version", "GP 版本"),
-        ("scp", "SCP"),
-        ("key_version", "密钥版本"),
-        ("security_level", "安全级别"),
-    ]:
-        val = result.get(key)
-        if val:
-            print(f"  {label}: {val}")
+    for line in _format_gp_info(result):
+        print(line)
 
 
-def cmd_gp_aid(args: str, transport: Any) -> None:
+def _format_gp_info(result: dict) -> list[str]:
+    """格式化 gp-info 输出为行列表。"""
+    lines: list[str] = []
+
+    # 基本信息
+    lines.append("基本信息:")
+    if result.get("jc_version"):
+        lines.append(f"  JavaCard:    {result['jc_version']}")
+    if result.get("gp_version"):
+        lines.append(f"  GP 版本:     {result['gp_version']}")
+    if result.get("scp"):
+        lines.append(f"  SCP:         {result['scp']}")
+    if result.get("key_version"):
+        lines.append(f"  密钥版本:    {result['key_version']}")
+    if result.get("security_level"):
+        lines.append(f"  安全级别:    {result['security_level']}")
+
+    # CPLC
+    cplc = result.get("cplc", {})
+    if cplc:
+        lines.append("")
+        lines.append("CPLC (卡片生产信息):")
+        for key, cplc_label in [
+            ("ICSerialNumber", "芯片序列号"),
+            ("ICFabricator", "制造商"),
+            ("ICType", "芯片型号"),
+            ("OperatingSystemID", "OS ID"),
+            ("OperatingSystemReleaseDate", "OS 发布日期"),
+            ("OperatingSystemReleaseLevel", "OS 版本"),
+            ("ICFabricationDate", "生产日期"),
+            ("ICBatchIdentifier", "批次号"),
+            ("ICCManufacturer", "卡片制造商"),
+            ("ICPrePersonalizer", "预个人化方"),
+            ("ICPersonalizer", "个人化方"),
+        ]:
+            val = cplc.get(key)
+            if val:
+                lines.append(f"  {cplc_label}: {val}")
+
+    # Card Capabilities
+    caps = result.get("card_capabilities", [])
+    if caps:
+        lines.append("")
+        lines.append("密钥能力:")
+        for cap in caps:
+            note = f" ({cap['note']})" if cap.get("note") else ""
+            lines.append(
+                f"  版本={cap['version']} ID={cap['id']} "
+                f"类型={cap['type']} 长度={cap['length']}{note}"
+            )
+
+    return lines
+
+
+def cmd_gp_aid(args: str, session: Session) -> None:
     """注册 AID 别名。"""
     if not args:
         print("用法: gp-aid <别名> <AID>")
@@ -80,16 +165,16 @@ def cmd_gp_aid(args: str, transport: Any) -> None:
     alias = parts[0]
     aid = parts[1]
 
-    if not hasattr(transport, "_aid_aliases"):
-        transport._aid_aliases = {}
+    if not hasattr(session, "aid_aliases"):
+        session.aid_aliases = {}
 
-    transport._aid_aliases[alias] = aid
+    session.aid_aliases[alias] = aid
     print(f"AID 别名已注册: {alias} → {aid}")
 
 
-def cmd_gp_scp(args: str, transport: Any) -> None:
+def cmd_gp_scp(args: str, session: Session) -> None:
     """查看安全通道信息。"""
-    bridge = _get_bridge(transport)
+    bridge = _get_bridge(session)
     if not bridge:
         return
 
@@ -108,146 +193,153 @@ def cmd_gp_scp(args: str, transport: Any) -> None:
     print(f"安全级别: {sl}")
 
 
-def cmd_gp_status(args: str, transport: Any) -> None:
+def cmd_gp_status(args: str, session: Session) -> None:
     """查询卡片生命周期状态。"""
-    bridge = _get_bridge(transport)
+    bridge = _get_bridge(session)
     if not bridge:
         return
 
+    # 生命周期的状态从 --list 的 ISD 行提取
     try:
-        result = bridge.info()
+        list_result = bridge.list()
+        info_result = bridge.info()
     except GPBridgeError as exc:
         print(f"GP status 失败: {exc}")
         return
 
-    print(f"GP 版本:     {result.get('gp_version', '未知')}")
-    print(f"SCP:         {result.get('scp', '未知')}")
-    print(f"安全级别:    {result.get('security_level', '未知')}")
+    lines = _format_gp_status(list_result, info_result)
+    for line in lines:
+        print(line)
+
+
+def _format_gp_status(list_result: dict, info_result: dict) -> list[str]:
+    """格式化 gp-status 输出为行列表。"""
+    lines: list[str] = []
+
+    # 卡片生命周期
+    state = list_result.get("isd_state") or "未知"
+    state_desc = {
+        "OP_READY": "出厂就绪，可用默认密钥连接和管理",
+        "INITIALIZED": "已初始化，LOAD/INSTALL 受限",
+        "SECURED": "安全状态，需要密钥认证才能管理",
+        "CARD_LOCKED": "卡片已锁定，仅可解锁",
+        "TERMINATED": "已终止",
+    }.get(state, "")
+    lines.append(f"Card Status: {state}")
+    if state_desc:
+        lines.append(f"  → {state_desc}")
+
+    # 详细版本信息
+    lines.append("")
+    lines.append("版本信息:")
+    if info_result.get("jc_version"):
+        lines.append(f"  JavaCard:    {info_result['jc_version']}")
+    if info_result.get("gp_version"):
+        lines.append(f"  GP 版本:     {info_result['gp_version']}")
+    if info_result.get("scp"):
+        lines.append(f"  SCP:         {info_result['scp']}")
+
+    # ISD 信息
+    if list_result.get("isd"):
+        lines.append(f"  ISD AID:     {list_result['isd']}")
+
+    return lines
 
 
 # ── M4: GP 操作命令 ──────────────────────────────────────
 
 
-def cmd_gp_install(args: str, transport: Any) -> None:
-    """安装 CAP 文件。"""
-    if not args:
-        print("用法: gp-install <CAP文件路径>")
-        return
-
-    bridge = _get_bridge(transport)
-    if not bridge:
-        return
-
-    path = args.strip()
-    try:
-        result = bridge.install(path)
-    except GPBridgeError as exc:
-        print(f"安装失败: {exc}")
-        return
-
-    print(f"安装成功: {result}")
-
-
-def cmd_gp_delete(args: str, transport: Any) -> None:
+def cmd_gp_delete(args: str, session: Session) -> None:
     """删除 Applet/Package。"""
     if not args:
         print("用法: gp-delete <AID>")
         return
 
-    bridge = _get_bridge(transport)
+    bridge = _get_bridge(session)
     if not bridge:
         return
 
-    aid = args.strip()
+    aid = _resolve_aid(args, session)
     try:
-        result = bridge.delete(aid)
+        bridge.delete(aid)
     except GPBridgeError as exc:
         print(f"删除失败: {exc}")
         return
 
-    print(f"删除成功: {result}")
+    print("删除成功")
 
 
-def cmd_gp_lock(args: str, transport: Any) -> None:
+def cmd_gp_lock(args: str, session: Session) -> None:
     """锁定 Applet。"""
     if not args:
         print("用法: gp-lock <AID>")
         return
 
-    bridge = _get_bridge(transport)
+    bridge = _get_bridge(session)
     if not bridge:
         return
 
-    aid = args.strip()
+    aid = _resolve_aid(args, session)
     try:
-        result = bridge.lock(aid)
+        bridge.lock(aid)
     except GPBridgeError as exc:
         print(f"锁定失败: {exc}")
         return
 
-    print(f"锁定成功: {result}")
+    print("锁定成功")
 
 
-def cmd_gp_unlock(args: str, transport: Any) -> None:
+def cmd_gp_unlock(args: str, session: Session) -> None:
     """解锁 Applet。"""
     if not args:
         print("用法: gp-unlock <AID>")
         return
 
-    bridge = _get_bridge(transport)
+    bridge = _get_bridge(session)
     if not bridge:
         return
 
-    aid = args.strip()
+    aid = _resolve_aid(args, session)
     try:
-        result = bridge.unlock(aid)
+        bridge.unlock(aid)
     except GPBridgeError as exc:
         print(f"解锁失败: {exc}")
         return
 
-    print(f"解锁成功: {result}")
+    print("解锁成功")
 
 
-def cmd_gp_create(args: str, transport: Any) -> None:
+@gp_command
+def cmd_gp_create(args: str, session: Session, bridge: Any) -> None:
     """创建 Applet 实例。"""
     if not args:
         print("用法: gp-create <AID>")
         return
 
-    bridge = _get_bridge(transport)
-    if not bridge:
-        return
-
-    aid = args.strip()
+    aid = _resolve_aid(args, session)
     print(f"正在创建 Applet 实例: {aid} ...")
-
-    try:
-        result = bridge.execute_apdu(f"--create {aid}")
-    except GPBridgeError as exc:
-        print(f"创建失败: {exc}")
-        return
-
-    print(f"创建成功: {result}")
+    bridge.execute_apdu(f"--create {aid}")
+    print("创建成功")
 
 
-def cmd_gp_key(args: str, transport: Any) -> None:
+def cmd_gp_key(args: str, session: Session) -> None:
     """设置 GP 密钥。"""
     if not args:
         print("用法: gp-key <十六进制密钥>")
         return
 
-    bridge = _get_bridge(transport)
+    bridge = _get_bridge(session)
     if not bridge:
         return
 
     key_hex = args.strip()
     print(f"GP 密钥已设置为: {key_hex[:8]}...{key_hex[-4:]}")
-    transport._gp_key = key_hex
+    session.gp_key = key_hex
 
 
 # ── M4 补充：安装参数与高级操作 ──────────────────────────
 
-def cmd_gp_install(args: str, transport: Any) -> None:
+def cmd_gp_install(args: str, session: Session) -> None:
     """安装 CAP 文件。
 
     Usage:
@@ -257,7 +349,7 @@ def cmd_gp_install(args: str, transport: Any) -> None:
         print("用法: gp-install <CAP文件路径> [--params <hex>] [--privs <privs>] [--default] [-f]")
         return
 
-    bridge = _get_bridge(transport)
+    bridge = _get_bridge(session)
     if not bridge:
         return
 
@@ -297,87 +389,47 @@ def cmd_gp_install(args: str, transport: Any) -> None:
     print(f"安装成功。")
 
 
-def cmd_gp_set_default(args: str, transport: Any) -> None:
+@gp_command
+def cmd_gp_set_default(args: str, session: Session, bridge: Any) -> None:
     """设置指定 AID 为默认 Applet（NFC 刷卡自动选择）。"""
     if not args:
         print("用法: gp-set-default <AID>")
         return
 
-    bridge = _get_bridge(transport)
-    if not bridge:
-        return
-
-    aid = args.strip()
-    try:
-        bridge.make_default(aid)
-    except GPBridgeError as exc:
-        print(f"设置默认 Applet 失败: {exc}")
-        return
-
+    aid = _resolve_aid(args, session)
+    bridge.make_default(aid)
     print(f"已设置默认 Applet: {aid}")
 
 
-def cmd_gp_lock_card(args: str, transport: Any) -> None:
+@gp_command
+def cmd_gp_lock_card(args: str, session: Session, bridge: Any) -> None:
     """锁定卡片（SECURED → CARD_LOCKED）。"""
-    bridge = _get_bridge(transport)
-    if not bridge:
-        return
-
-    try:
-        bridge.lock_card()
-    except GPBridgeError as exc:
-        print(f"锁定卡片失败: {exc}")
-        return
-
+    bridge.lock_card()
     print("卡片已锁定。")
 
 
-def cmd_gp_unlock_card(args: str, transport: Any) -> None:
+@gp_command
+def cmd_gp_unlock_card(args: str, session: Session, bridge: Any) -> None:
     """解锁卡片（CARD_LOCKED → SECURED）。"""
-    bridge = _get_bridge(transport)
-    if not bridge:
-        return
-
-    try:
-        bridge.unlock_card()
-    except GPBridgeError as exc:
-        print(f"解锁卡片失败: {exc}")
-        return
-
+    bridge.unlock_card()
     print("卡片已解锁。")
 
 
-def cmd_gp_init_card(args: str, transport: Any) -> None:
+@gp_command
+def cmd_gp_init_card(args: str, session: Session, bridge: Any) -> None:
     """初始化卡片（OP_READY → INITIALIZED）。"""
-    bridge = _get_bridge(transport)
-    if not bridge:
-        return
-
-    try:
-        bridge.initialize_card()
-    except GPBridgeError as exc:
-        print(f"初始化卡片失败: {exc}")
-        return
-
+    bridge.initialize_card()
     print("卡片已初始化（OP_READY → INITIALIZED）。")
 
 
-def cmd_gp_secure_card(args: str, transport: Any) -> None:
+@gp_command
+def cmd_gp_secure_card(args: str, session: Session, bridge: Any) -> None:
     """安全化卡片（INITIALIZED → SECURED）。"""
-    bridge = _get_bridge(transport)
-    if not bridge:
-        return
-
-    try:
-        bridge.secure_card()
-    except GPBridgeError as exc:
-        print(f"安全化卡片失败: {exc}")
-        return
-
+    bridge.secure_card()
     print("卡片已安全化（INITIALIZED → SECURED）。")
 
 
-def cmd_gp_put_key(args: str, transport: Any) -> None:
+def cmd_gp_put_key(args: str, session: Session) -> None:
     """更新 SCP 密钥。
 
     Usage:
@@ -390,7 +442,7 @@ def cmd_gp_put_key(args: str, transport: Any) -> None:
         print("选项: --key-ver <ver> --new-keyver <ver> --kdf <template>")
         return
 
-    bridge = _get_bridge(transport)
+    bridge = _get_bridge(session)
     if not bridge:
         return
 
@@ -442,134 +494,83 @@ def cmd_gp_put_key(args: str, transport: Any) -> None:
     print("SCP 密钥已更新。")
 
 
-def cmd_gp_delete_key(args: str, transport: Any) -> None:
+@gp_command
+def cmd_gp_delete_key(args: str, session: Session, bridge: Any) -> None:
     """删除指定版本的密钥。"""
     if not args:
         print("用法: gp-delete-key <版本号>")
         return
 
-    bridge = _get_bridge(transport)
-    if not bridge:
-        return
-
-    ver = args.strip()
-    try:
-        bridge.delete_key(ver)
-    except GPBridgeError as exc:
-        print(f"删除密钥失败: {exc}")
-        return
-
-    print(f"密钥版本 {ver} 已删除。")
+    bridge.delete_key(args.strip())
+    print(f"密钥版本 {args.strip()} 已删除。")
 
 
-def cmd_gp_store_data(args: str, transport: Any) -> None:
+@gp_command
+def cmd_gp_store_data(args: str, session: Session, bridge: Any) -> None:
     """写入个人化数据（GP STORE DATA）。"""
     if not args:
         print("用法: gp-store-data <十六进制数据>")
         return
 
-    bridge = _get_bridge(transport)
-    if not bridge:
-        return
-
-    data_hex = args.strip()
-    try:
-        bridge.store_data(data_hex)
-    except GPBridgeError as exc:
-        print(f"写入数据失败: {exc}")
-        return
-
+    bridge.store_data(args.strip())
     print("个人化数据已写入。")
 
 
-def cmd_gp_create_domain(args: str, transport: Any) -> None:
+@gp_command
+def cmd_gp_create_domain(args: str, session: Session, bridge: Any) -> None:
     """创建补充安全域（SSD）。"""
     if not args:
         print("用法: gp-create-domain <AID>")
         return
 
-    bridge = _get_bridge(transport)
-    if not bridge:
-        return
-
-    aid = args.strip()
-    try:
-        bridge.create_domain(aid)
-    except GPBridgeError as exc:
-        print(f"创建安全域失败: {exc}")
-        return
-
+    aid = _resolve_aid(args, session)
+    bridge.create_domain(aid)
     print(f"补充安全域已创建: {aid}")
 
 
-def cmd_gp_rename_isd(args: str, transport: Any) -> None:
+@gp_command
+def cmd_gp_rename_isd(args: str, session: Session, bridge: Any) -> None:
     """重命名 ISD AID。"""
     if not args:
         print("用法: gp-rename-isd <新AID>")
         return
 
-    bridge = _get_bridge(transport)
-    if not bridge:
-        return
-
-    new_aid = args.strip()
-    try:
-        bridge.rename_isd(new_aid)
-    except GPBridgeError as exc:
-        print(f"重命名 ISD 失败: {exc}")
-        return
-
+    new_aid = _resolve_aid(args, session)
+    bridge.rename_isd(new_aid)
     print(f"ISD 已重命名为: {new_aid}")
 
 
-def cmd_gp_load(args: str, transport: Any) -> None:
+@gp_command
+def cmd_gp_load(args: str, session: Session, bridge: Any) -> None:
     """仅加载 CAP 文件到卡片（不 INSTALL，分步操作）。"""
     if not args:
         print("用法: gp-load <CAP文件路径>")
         return
 
-    bridge = _get_bridge(transport)
-    if not bridge:
-        return
-
-    cap_path = args.strip()
-    try:
-        bridge.load(cap_path)
-    except GPBridgeError as exc:
-        print(f"加载失败: {exc}")
-        return
-
-    print(f"CAP 文件已加载: {cap_path}")
+    bridge.load(args.strip())
+    print("CAP 文件已加载。")
 
 
-def cmd_gp_uninstall(args: str, transport: Any) -> None:
+@gp_command
+def cmd_gp_uninstall(args: str, session: Session, bridge: Any) -> None:
     """卸载 CAP 文件。"""
     if not args:
         print("用法: gp-uninstall <CAP文件路径或AID>")
         return
 
-    bridge = _get_bridge(transport)
-    if not bridge:
-        return
-
-    target = args.strip()
-    try:
-        bridge.uninstall(target)
-    except GPBridgeError as exc:
-        print(f"卸载失败: {exc}")
-        return
-
+    target = _resolve_aid(args, session)
+    bridge.uninstall(target)
     print(f"已卸载: {target}")
 
 
-def cmd_gp_set_cplc(args: str, transport: Any) -> None:
+def cmd_gp_set_cplc(args: str, session: Session) -> None:
     """设置 CPLC 个人化日期。
 
     Usage:
         gp-set-cplc --pre-perso <hex> --perso <hex>
         gp-set-cplc --today
     """
-    bridge = _get_bridge(transport)
+    bridge = _get_bridge(session)
     if not bridge:
         return
 
@@ -605,42 +606,24 @@ def cmd_gp_set_cplc(args: str, transport: Any) -> None:
     print("CPLC 数据已更新。")
 
 
-def cmd_gp_secure_apdu(args: str, transport: Any) -> None:
+@gp_command
+def cmd_gp_secure_apdu(args: str, session: Session, bridge: Any) -> None:
     """通过 SCP 安全通道发送 APDU。"""
     if not args:
         print("用法: gp-secure-apdu <APDU十六进制>")
         return
 
-    bridge = _get_bridge(transport)
-    if not bridge:
-        return
-
-    apdu_hex = args.strip()
-    try:
-        result = bridge.send_secure_apdu(apdu_hex)
-    except GPBridgeError as exc:
-        print(f"安全 APDU 发送失败: {exc}")
-        return
-
+    result = bridge.send_secure_apdu(args.strip())
     print(result)
 
 
-def cmd_gp_mode(args: str, transport: Any) -> None:
+@gp_command
+def cmd_gp_mode(args: str, session: Session, bridge: Any) -> None:
     """设置 SCP 安全通道模式（CLR/MAC/ENC/RMAC）。"""
     if not args:
         print("用法: gp-mode <模式>")
         print("模式: CLR, MAC, ENC, RMAC, 或组合如 MAC+ENC")
         return
 
-    bridge = _get_bridge(transport)
-    if not bridge:
-        return
-
-    mode = args.strip()
-    try:
-        bridge.set_mode(mode)
-    except GPBridgeError as exc:
-        print(f"设置模式失败: {exc}")
-        return
-
-    print(f"SCP 模式已设置为: {mode}")
+    bridge.set_mode(args.strip())
+    print(f"SCP 模式已设置为: {args.strip()}")

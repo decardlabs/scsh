@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# scshr — Smart Card Shell runner wrapper.
+# Uses the venv directly to run scsh. No manual activate needed.
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR"
+
+VENV_DIR="$SCRIPT_DIR/.venv"
+SCSH="$VENV_DIR/bin/scsh"
+PIP="$VENV_DIR/bin/pip"
+
+if [ ! -d "$VENV_DIR" ]; then
+  echo "Creating virtual environment..." >&2
+  python3 -m venv "$VENV_DIR"
+fi
+
+# Ensure package is installed (idempotent after first run)
+"$PIP" install -e ".[dev]" 2>&1 | tail -3
+
+exec "$SCSH" "$@"

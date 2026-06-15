@@ -6,9 +6,10 @@ import sys
 from typing import Any
 
 from scsh import __version__
+from scsh.session import Session
 
 
-def cmd_version(args: str, transport: Any) -> None:
+def cmd_version(args: str, session: Session) -> None:
     """显示 scsh 版本信息。
 
     Usage:
@@ -22,7 +23,7 @@ def cmd_version(args: str, transport: Any) -> None:
     print(f"pyscard {_get_pyscard_version()}")
 
     if verbose:
-        _print_gp_jar_version(transport)
+        _print_gp_jar_version(session)
         _print_java_version()
 
 
@@ -54,8 +55,8 @@ def _print_java_version() -> None:
     print("Java    (未找到)")
 
 
-def _print_gp_jar_version(transport: Any) -> None:
-    bridge = getattr(transport, "gp_bridge", None)
+def _print_gp_jar_version(session: Session) -> None:
+    bridge = getattr(session, "gp_bridge", None)
     if bridge is None:
         print("gp.jar  (未初始化)")
         return

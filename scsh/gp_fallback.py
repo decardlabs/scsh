@@ -49,7 +49,7 @@ def gp_list() -> int:
         print()
         print("完整列表需要 SCP02 安全通道，使用 gp.jar:")
         print(f"  ~/.local/bin/gp --list  # 如果 gp.jar 可用")
-        print(f"  或直接: java -jar {SCSH_DIR / 'gp.jar'} --list")
+        print(f"  或直接: java -jar {SCSH_DIR / 'tools' / 'gp.jar'} --list")
 
         t.disconnect()
         return 0
@@ -111,9 +111,10 @@ def main() -> int:
         return gp_info()
     else:
         # 其他操作回退到 gp.jar
-        java_home = Path.home() / "java" / "jdk-11.0.31+11" / "Contents" / "Home"
-        gp_jar = SCSH_DIR / "gp.jar"
-        cmd = [str(java_home / "bin" / "java"), "-jar", str(gp_jar)] + args
+        from scsh.bridge.gp_jar import GPJarBridge
+        java_bin = GPJarBridge._find_java()
+        gp_jar = SCSH_DIR / "tools" / "gp.jar"
+        cmd = [java_bin, "-jar", str(gp_jar)] + args
         result = subprocess.run(cmd)
         return result.returncode
 

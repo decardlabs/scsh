@@ -9,6 +9,7 @@ from prompt_toolkit.completion import Completer, Completion
 from prompt_toolkit.history import FileHistory
 
 from scsh.commands import CommandRegistry
+from scsh.session import Session
 
 
 class ScshRepl:
@@ -17,16 +18,17 @@ class ScshRepl:
     def __init__(
         self,
         registry: CommandRegistry,
-        transport: Any,
+        session: Session,
     ) -> None:
         self.registry = registry
-        self.transport = transport
+        self.session = session
         self._session: PromptSession | None = None
         self._running = True
 
     def _prompt(self) -> str:
-        reader = self.transport._reader_index if hasattr(self.transport, '_reader_index') else None
-        idx = str(reader) if reader is not None else "N"
+        idx = getattr(self.session.transport, '_reader_index', None)
+        if not isinstance(idx, int):
+            idx = "N"
         return f"[scsh:{idx}] > "
 
     def _get_completions(self) -> list[str]:
@@ -40,14 +42,14 @@ class ScshRepl:
         if name in ("exit", "quit"):
             self._running = False
             return
-        self.registry.execute(name, args, self.transport)
+        self.registry.execute(name, args, self.session)
 
     @staticmethod
-    def _handle_exit(args: str, transport: Any) -> bool:
+    def _handle_exit(args: str, session: Session) -> bool:
         return False
 
     @staticmethod
-    def _handle_quit(args: str, transport: Any) -> bool:
+    def _handle_quit(args: str, session: Session) -> bool:
         return False
 
     def run(self) -> None:
