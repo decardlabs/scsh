@@ -1,65 +1,112 @@
-"""scsh 入口点 — 参数解析与 REPL 启动。"""
+"""scsh 入口点 — 依赖检查、参数解析与 REPL 启动。"""
 
 from __future__ import annotations
 
 import argparse
-from typing import Any
-
-from scsh.commands import CommandRegistry
-from scsh.commands.hardware import (
-    cmd_connect,
-    cmd_info,
-    cmd_reconnect,
-    cmd_readers,
-    cmd_reset,
-    cmd_config,
-)
-from scsh.commands.apdu import (
-    cmd_send,
-    cmd_select,
-    cmd_get_response,
-    cmd_send_file,
-    cmd_repeat,
-    cmd_timing,
-    cmd_record,
-)
-from scsh.commands.gp import (
-    cmd_gp_list,
-    cmd_gp_info,
-    cmd_gp_aid,
-    cmd_gp_scp,
-    cmd_gp_status,
-    cmd_gp_install,
-    cmd_gp_delete,
-    cmd_gp_lock,
-    cmd_gp_unlock,
-    cmd_gp_create,
-    cmd_gp_key,
-    # 新增
-    cmd_gp_set_default,
-    cmd_gp_lock_card,
-    cmd_gp_unlock_card,
-    cmd_gp_init_card,
-    cmd_gp_secure_card,
-    cmd_gp_put_key,
-    cmd_gp_delete_key,
-    cmd_gp_store_data,
-    cmd_gp_create_domain,
-    cmd_gp_rename_isd,
-    cmd_gp_load,
-    cmd_gp_uninstall,
-    cmd_gp_set_cplc,
-    cmd_gp_secure_apdu,
-    cmd_gp_mode,
-)
-from scsh.commands.system import cmd_version
-from scsh.transport.pcsc import PCSCTransport
-from scsh.bridge.gp_jar import GPJarBridge
-from scsh.session import Session
+import importlib.metadata
+import shutil
+import sys
 
 
-def build_registry() -> CommandRegistry:
+# ── 运行环境预检 ──────────────────────────────────────────────
+
+
+def _check_python_packages() -> list[str]:
+    """检查 Python 依赖包是否已安装（用 metadata 查，不触发 import）。"""
+    missing: list[str] = []
+    packages: dict[str, str] = {
+        "pyscard": "pyscard>=2.1",
+        "prompt_toolkit": "prompt-toolkit>=3.0",
+        "rich": "rich>=13",
+    }
+    for pkg_name, label in packages.items():
+        try:
+            importlib.metadata.distribution(pkg_name)
+        except importlib.metadata.PackageNotFoundError:
+            missing.append(label)
+    return missing
+
+
+def _check_system_services() -> list[str]:
+    """检查系统服务和外部工具（pcscd、java 等）。"""
+    missing: list[str] = []
+    if not shutil.which("pcscd"):
+        missing.append("PC/SC 服务 (pcscd)  —  brew install pcsc-lite")
+    java = shutil.which("java")
+    if not java:
+        missing.append("Java Runtime       —  用于 GP 功能 (brew install java)")
+    return missing
+
+
+def check_environment() -> list[str]:
+    """检查运行环境，返回所有缺失项列表。"""
+    return _check_python_packages() + _check_system_services()
+
+
+def print_missing(missing: list[str]) -> None:
+    """将缺失项格式化输出到 stderr。"""
+    print("scsh: 缺少运行依赖，请先安装：\n", file=sys.stderr)
+    for item in missing:
+        print(f"  • {item}", file=sys.stderr)
+    print(file=sys.stderr)
+    print("安装所有依赖：  pip install -e .", file=sys.stderr)
+    print("开发模式：       pip install -e \".[dev]\"", file=sys.stderr)
+
+
+# ── 命令注册表 ──────────────────────────────────────────────
+
+
+def build_registry() -> "CommandRegistry":
     """构建命令注册表，注册所有可用命令。"""
+    from scsh.commands import CommandRegistry
+    from scsh.commands.hardware import (
+        cmd_connect,
+        cmd_info,
+        cmd_reconnect,
+        cmd_readers,
+        cmd_reset,
+        cmd_config,
+    )
+    from scsh.commands.apdu import (
+        cmd_send,
+        cmd_select,
+        cmd_get_response,
+        cmd_send_file,
+        cmd_repeat,
+        cmd_timing,
+        cmd_record,
+    )
+    from scsh.commands.gp import (
+        cmd_gp_list,
+        cmd_gp_info,
+        cmd_gp_aid,
+        cmd_gp_scp,
+        cmd_gp_status,
+        cmd_gp_install,
+        cmd_gp_delete,
+        cmd_gp_lock,
+        cmd_gp_unlock,
+        cmd_gp_create,
+        cmd_gp_key,
+        # M4 补充
+        cmd_gp_set_default,
+        cmd_gp_lock_card,
+        cmd_gp_unlock_card,
+        cmd_gp_init_card,
+        cmd_gp_secure_card,
+        cmd_gp_put_key,
+        cmd_gp_delete_key,
+        cmd_gp_store_data,
+        cmd_gp_create_domain,
+        cmd_gp_rename_isd,
+        cmd_gp_load,
+        cmd_gp_uninstall,
+        cmd_gp_set_cplc,
+        cmd_gp_secure_apdu,
+        cmd_gp_mode,
+    )
+    from scsh.commands.system import cmd_version
+
     registry = CommandRegistry()
 
     # M0 — 系统命令
@@ -92,7 +139,6 @@ def build_registry() -> CommandRegistry:
     registry.register("gp-unlock", "解锁 Applet", cmd_gp_unlock)
     registry.register("gp-create", "创建 Applet 实例", cmd_gp_create)
     registry.register("gp-key", "设置 GP 密钥", cmd_gp_key)
-    # M4 补充——生命周期管理与高级操作
     registry.register("gp-set-default", "设置默认 Applet（NFC）", cmd_gp_set_default)
     registry.register("gp-lock-card", "锁定卡片", cmd_gp_lock_card)
     registry.register("gp-unlock-card", "解锁卡片", cmd_gp_unlock_card)
@@ -116,6 +162,9 @@ def build_registry() -> CommandRegistry:
     registry.register("record", "录制当前会话到文件", cmd_record)
 
     return registry
+
+
+# ── 参数解析 ──────────────────────────────────────────────
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -146,7 +195,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def execute_script(path: str, registry: CommandRegistry, session: Session) -> None:
+# ── 脚本执行 ──────────────────────────────────────────────
+
+
+def execute_script(path: str, registry: "CommandRegistry", session: "Session") -> None:
     """执行脚本文件中的命令。"""
     with open(path) as f:
         for line in f:
@@ -157,13 +209,26 @@ def execute_script(path: str, registry: CommandRegistry, session: Session) -> No
             registry.execute(name, args, session)
 
 
+# ── 入口 ──────────────────────────────────────────────
+
+
 def main() -> None:
     """scsh 主入口。"""
+    # 第一步：预检运行环境
     args = parse_args()
+    missing = check_environment()
+    if missing:
+        print_missing(missing)
+        sys.exit(1)
+
+    # 第二步：预检通过，加载 scsh 模块（延迟 import）
+    import os
+
+    from scsh.transport.pcsc import PCSCTransport
+    from scsh.bridge.gp_jar import GPJarBridge
+    from scsh.session import Session
 
     transport = PCSCTransport()
-    # 在 scsh 项目目录查找 gp.jar
-    import os
     scsh_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     gp_jar_path = os.path.join(scsh_dir, "tools", "gp.jar")
     gp_bridge = GPJarBridge(jar_path=gp_jar_path) if os.path.isfile(gp_jar_path) else GPJarBridge()
