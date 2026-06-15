@@ -1,8 +1,4 @@
 # Smart Card Shell (scsh)
-# scsh (original)
-# scsh
-=======
-# Smart Card Shell (scsh)
 
 统一的 REPL 交互式智能卡测试工具。一个 shell 内完成读卡器管理、APDU 收发、GlobalPlatform 管理和脚本批处理。
 
@@ -16,6 +12,8 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
+启动后自动检查运行环境，缺失依赖时会给出明确的安装指引。
+
 ### 依赖
 
 | 组件 | 用途 | 说明 |
@@ -24,8 +22,8 @@ pip install -e ".[dev]"
 | pyscard | PC/SC 智能卡通信 | macOS 需要 ad-hoc 签名 |
 | prompt_toolkit | REPL 交互界面 | |
 | rich | 美化输出 | |
-| Java (可选) | gp.jar GP 管理 | 安装 JDK 8+ 并设 `JAVA_HOME` |
-| gp.jar (可选) | GlobalPlatform 命令 | 首次运行自动搜索 `gp.jar` |
+| Java Runtime (可选) | gp.jar GP 管理 | 安装 JDK 8+ |
+| gp.jar (可选) | GlobalPlatform 命令 | 自动搜索 PATH → `tools/` → 当前目录 |
 
 ## 快速开始
 
@@ -53,6 +51,13 @@ ATR: 3B8F80018665FF0B080118000000000000900098
 
 ## 命令参考
 
+### 系统命令 (M0)
+
+| 命令 | 功能 |
+|------|------|
+| `version` | 显示 scsh/Python/pyscard 版本 |
+| `version -v` | 详细模式（额外显示 gp.jar / Java 版本） |
+
 ### 硬件管理 (M1)
 
 | 命令 | 功能 |
@@ -72,23 +77,43 @@ ATR: 3B8F80018665FF0B080118000000000000900098
 | `get-response <Le>` | GET RESPONSE |
 | `send-file <path>` | 从文件读取 APDU 并逐条发送 |
 
-### GP 管理 (M3-M4)
+### GP 查询 (M3)
 
 | 命令 | 功能 |
 |------|------|
-| `gp-list` | 列出已安装的 ISD/Package/Applet |
-| `gp-info` | 显示 GP 详细信息 |
+| `gp-list` | 列出已安装的 ISD/Package/Applet（含 ISD 状态） |
+| `gp-info` | 显示 GP 详细信息（SCP、CPLC、Card Data、Capabilities） |
+| `gp-aid <alias> <AID>` | 注册 AID 别名 |
+| `gp-scp` | 查看安全通道信息 |
+| `gp-status` | 查询卡片生命周期 |
+
+### GP 操作 (M4)
+
+| 命令 | 功能 |
+|------|------|
 | `gp-install <cap>` | 安装 CAP 文件 |
 | `gp-delete <aid>` | 删除 Applet/Package |
 | `gp-lock <aid>` | 锁定 Applet |
 | `gp-unlock <aid>` | 解锁 Applet |
 | `gp-create <aid>` | 创建 Applet 实例 |
 | `gp-key <hex>` | 设置 GP 密钥 |
-| `gp-aid <alias> <AID>` | 注册 AID 别名 |
-| `gp-scp` | 查看安全通道信息 |
-| `gp-status` | 查询卡片生命周期 |
+| `gp-load <cap>` | 仅加载 CAP（不执行 INSTALL） |
+| `gp-uninstall <aid>` | 卸载 CAP/Package |
+| `gp-put-key <kv>` | 更新 SCP 密钥 |
+| `gp-delete-key <kv>` | 删除指定版本密钥 |
+| `gp-store-data <hex>` | 写入个人化数据 |
+| `gp-set-default <aid>` | 设置默认 Applet（NFC） |
+| `gp-lock-card` | 锁定卡片（TERMINATED） |
+| `gp-unlock-card` | 解锁卡片 |
+| `gp-init-card` | 初始化卡片（OP_READY → INITIALIZED） |
+| `gp-secure-card` | 安全化卡片（INITIALIZED → SECURED） |
+| `gp-create-domain <aid>` | 创建补充安全域（SSD） |
+| `gp-rename-isd <aid>` | 重命名 ISD AID |
+| `gp-set-cplc <date>` | 设置 CPLC 个人化日期 |
+| `gp-secure-apdu <hex>` | 通过 SCP 安全通道发送 APDU |
+| `gp-mode <mode>` | 设置 SCP 安全通道模式 |
 
-> **注意**: GP 命令需要安装 Java 并配置 `JAVA_HOME` 环境变量。系统自带 gp.jar 时自动使用。
+> **注意**: GP 命令需要安装 Java Runtime，scsh 会自动搜索 `gp.jar`（搜索顺序：PATH → tools/ → 当前目录）。
 
 ### 辅助功能 (M5)
 
@@ -149,37 +174,51 @@ pytest tests/
 ```
 scsh/
 ├── scsh/
-│   ├── main.py              # 入口 + 参数解析
+│   ├── __init__.py          # 版本号
+│   ├── main.py              # 入口 + 环境预检 + 参数解析
 │   ├── repl.py              # prompt_toolkit REPL
+│   ├── session.py           # 会话状态（Session dataclass）
 │   ├── exceptions.py        # 统一异常层级
+│   ├── gp_fallback.py       # gp.jar 不可用时的 APDU 降级方案
 │   ├── commands/
 │   │   ├── __init__.py      # CommandRegistry
-│   │   ├── hardware.py      # 硬件命令
-│   │   ├── apdu.py          # APDU 命令
-│   │   └── gp.py            # GP 命令
+│   │   ├── hardware.py      # 硬件命令（M1）
+│   │   ├── apdu.py          # APDU 命令（M2）
+│   │   ├── gp.py            # GP 命令（M3-M4）
+│   │   └── system.py        # 系统命令（version）
 │   ├── transport/
 │   │   └── pcsc.py          # pyscard 封装
 │   ├── bridge/
-│   │   └── gp_jar.py        # gp.jar 桥接
+│   │   └── gp_jar.py        # gp.jar 子进程桥接
 │   └── formats/
 │       ├── apdu.py          # APDU 解析/格式化
 │       ├── tlv.py           # BER-TLV 编解码
 │       └── sw.py            # SW 状态字数据库
-├── tests/                   # 172 个测试
-├── gp.jar                   # GlobalPlatformPro
+├── tests/                   # 177 个测试
+├── tools/
+│   └── gp.jar               # GlobalPlatformPro
+├── examples/                # APDU 脚本示例
+├── CLAUDE.md                # AI 辅助开发指南
+├── scshr                    # 入口 Shell 脚本
+├── download-isoapplet.sh    # ISOApplet 下载脚本
 └── pyproject.toml
 ```
 
 ## 架构
 
 ```
-REPL Layer (prompt_toolkit)
-    │
-    ├── 硬件命令 ── PC/SC Transport (pyscard)
-    ├── APDU 命令 ── PC/SC Transport (pyscard)
-    └── GP 命令 ──── gp.jar Bridge (subprocess)
-                          │
-                     Hardware (PCSC.framework / pcsc-lite / winscard)
+     REPL (prompt_toolkit)
+          │
+          ├── M0  系统命令 ──── version
+          ├── M1  硬件命令 ──── PC/SC Transport (pyscard)
+          ├── M2  APDU 命令 ─── PC/SC Transport (pyscard)
+          ├── M3  GP 查询 ───── gp.jar Bridge (subprocess) / pyscard fallback
+          ├── M4  GP 操作 ───── gp.jar Bridge (subprocess)
+          └── M5  辅助命令 ──── repeat / timing / config / record
+                                   │
+          Session (dataclass) ──── 所有状态集中管理
+                                   │
+                              Hardware (PCSC.framework / pcsc-lite / winscard)
 ```
 
 ## 许可证
