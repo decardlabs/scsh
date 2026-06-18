@@ -1,0 +1,93 @@
+# ============================================================
+# scsh 项目配置文件示例
+# 文件名: scsh.toml
+# 放置位置: 项目根目录 (与 build.gradle 同级)
+# 优先级: 项目配置 > 全局配置(~/.scsh/config.toml)
+# ============================================================
+
+[connection]
+# PC/SC 读卡器名称 (通过 `session readers` 命令查看可用读卡器)
+reader = "ACS ACR39U ICC Reader 00 00"
+
+# SCP 协议版本 (01 / 02 / 03)
+scp = "02"
+
+# GP 连接认证密钥 (十六进制，默认值为 GlobalPlatform 标准默认值)
+# ⚠️ 这是连接认证密钥，不是卡片存储密钥
+key = "404142434445464748494A4B4C4D4E4F"
+
+# SCP 安全通道模式 (CLR / MAC / ENC / RMAC / MAC+ENC)
+mode = "MAC+ENC"
+
+# Java 可执行文件路径 (可选，默认自动查找)
+# java_path = "/usr/bin/java"
+
+# gp.jar 文件路径 (可选，默认使用内置路径)
+# gp_jar = "/path/to/gp.jar"
+
+
+# ============================================================
+# AID 别名配置
+# 用途: 用简短别名代替冗长的十六进制 AID
+# ============================================================
+[aid_aliases]
+isd     = "A000000003000000"
+myapp   = "A000000001000001"
+fido2   = "A000000002000001"
+testapp = "A000000009000001"
+
+
+# ============================================================
+# 部署 Profile 蓝图
+# 用途: 定义卡片目标状态，供 deploy provision/plan 使用
+# ============================================================
+[profile]
+name = "My Project Deploy Profile"
+version = "1.0"
+
+
+# 需要部署的 Package/Applet 列表
+# 每个 [[profile.packages]] 块定义一个要安装的 CAP 包
+# ------------------------------------------------------------
+[[profile.packages]]
+# Applet/Package 的 AID (十六进制)
+aid     = "A000000001000001"
+# CAP 文件路径 (相对于项目根目录)
+cap     = "build/libs/HelloWorld.cap"
+# 是否为默认选中 Applet (可选，默认 false)
+default = true
+# 安装参数 (TLV 格式，十六进制，可选)
+# params  = "00C10101"
+# Applet 权限位 (十六进制，可选)
+# privs   = "02"
+# 描述 (可选，仅作注释)
+description = "示例 HelloWorld Applet"
+
+
+[[profile.packages]]
+aid     = "A000000002000001"
+cap     = "build/libs/FIDO2Applet.cap"
+params  = "00C10101"
+privs   = "02"
+description = "FIDO2 认证 Applet"
+
+
+# 依赖包 (可选，声明卡片上必须预装的包)
+# ------------------------------------------------------------
+[[profile.dependencies]]
+aid = "A000000051000000"
+description = "FIDO2 依赖: AES 加密库"
+
+
+# ============================================================
+# 全局配置示例 (~/.scsh/config.toml)
+# 将以下内容保存到 ~/.scsh/config.toml
+# ============================================================
+# [connection]
+# reader = "ACS ACR39U ICC Reader 00 00"
+# scp = "02"
+# key = "404142434445464748494A4B4C4D4E4F"
+# mode = "MAC"
+#
+# [aid_aliases]
+# isd = "A000000003000000"
