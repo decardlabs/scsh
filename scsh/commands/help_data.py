@@ -191,12 +191,11 @@ DEPLOY_HELP: dict[str, dict[str, Any]] = {
         },
         "usage": [
             "deploy install <CAP路径>",
-            "deploy install <CAP路径> --params <hex> --privs <privs>",
-            "deploy install <CAP路径> --default",
-            "deploy install <CAP路径> --force",
-            "deploy install <CAP路径> --step",
-            "deploy install <CAP路径> --load-only",
-            "deploy install <CAP路径> --install-only",
+            "deploy install <CAP路径> --params <hex> --privs <privs> --default",
+            "deploy install <CAP路径> --force          # 强制重装（先删除再装）",
+            "deploy install <CAP路径> --step           # 分步模式（每步暂停确认）",
+            "deploy install <CAP路径> --load-only       # 仅加载不安装",
+            "deploy install <CAP路径> --install-only --applet <AID>  # 仅安装（包已加载）",
             "gp-install <CAP路径> [--params] [--privs] [--default] [-f]",
         ],
     },
@@ -235,6 +234,15 @@ DEPLOY_HELP: dict[str, dict[str, Any]] = {
         "apdu": {
             "gp_op": "按 Profile 蓝图编排多条 INSTALL/DELETE",
             "gp_jar": "无直接映射（scsh 编排层）",
+            "apdu_flow": [
+                "1. 读取 scsh.toml Profile",
+                "2. card list 获取当前状态",
+                "3. diff: Profile vs 卡片 → 安装计划",
+                "4. 逐个 deploy install",
+            ],
+        },
+        "diagnostic": {
+            "6438": {"cause": "包依赖未找到", "fix": "检查 Profile 中定义的包是否依赖卡片缺失的基础包"},
         },
         "usage": [
             "deploy provision              # 按 scsh.toml 自动编排",
@@ -243,8 +251,18 @@ DEPLOY_HELP: dict[str, dict[str, Any]] = {
         ],
     },
     "plan": {
+        "apdu": {
+            "gp_op": "Profile vs 卡片状态差异计算（只读，不执行）",
+            "gp_jar": "--list（获取卡片状态）",
+        },
+        "diagnostic": {
+            "N/A": {"cause": "plan 不执行任何写操作", "fix": "用 deploy provision 执行安装"},
+        },
         "usage": [
             "deploy plan  # 显示 Profile vs 卡片差异",
+            "  + 需安装的包",
+            "  = 已存在跳过",
+            "  ? 卡上有但 Profile 中没有",
         ],
     },
 }
