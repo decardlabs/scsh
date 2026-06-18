@@ -16,10 +16,34 @@ from scsh.exceptions import GPBridgeError
 
 
 class GPJarBridge:
-    """gp.jar 命令桥接。"""
+    """gp.jar 命令桥接。
+
+    v0.4.0 新增：_auth_args 自动注入连接密钥/SCP/Mode 到所有 GP 命令。
+    修复了 gp-key 密钥从未传递给 _run() 的 Bug。
+    """
 
     def __init__(self, jar_path: str | None = None) -> None:
         self.jar_path = jar_path or self._find_jar()
+        # v0.4.0: 连接认证参数，自动注入到所有 _run() 调用
+        self._auth_key: str | None = None
+        self._auth_scp: str | None = None
+        self._auth_mode: str | None = None
+
+    def set_key(self, key: str) -> None:
+        """设置连接密钥（注入到所有后续 GP 命令）。
+
+        这是 config key 的底层实现：设置本地连接认证密钥。
+        不是更新卡片上的密钥（key put 才是）。
+        """
+        self._auth_key = key
+
+    def set_scp_type(self, scp: str) -> None:
+        """设置 SCP 类型（SCP02/SCP03）。"""
+        self._auth_scp = scp
+
+    def set_mode_param(self, mode: str) -> None:
+        """设置 SCP 模式参数（CLR/MAC/ENC/RMAC）。"""
+        self._auth_mode = mode
 
     @staticmethod
     def _find_jar() -> str:
@@ -63,10 +87,27 @@ class GPJarBridge:
                 return path
         return "java"
 
+    def _auth_args(self) -> list[str]:
+        """构建认证参数列表，注入到所有 GP 命令。
+
+        v0.4.0 Bug 修复：密钥从 bridge._auth_key 获取，不再依赖 gp.jar 默认值。
+        """
+        extra: list[str] = []
+        if self._auth_key:
+            extra.extend(["--key", self._auth_key])
+        if self._auth_scp:
+            extra.extend(["--scp", self._auth_scp])
+        if self._auth_mode:
+            extra.extend(["--mode", self._auth_mode])
+        return extra
+
     def _run(self, *args: str) -> str:
-        """执行 gp.jar 命令。"""
+        """执行 gp.jar 命令。
+
+        v0.4.0: 自动注入 _auth_args() 到命令行。
+        """
         java_bin = self._find_java()
-        cmd = [java_bin, "-jar", self.jar_path, *args]
+        cmd = [java_bin, "-jar", self.jar_path, *self._auth_args(), *args]
         try:
             result = subprocess.run(
                 cmd,

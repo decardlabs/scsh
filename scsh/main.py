@@ -1,9 +1,13 @@
-"""scsh 入口点 — 依赖检查、参数解析与 REPL 启动。"""
+"""scsh 入口点 — 依赖检查、参数解析与 REPL 启动。
+
+v0.4.0: 子系统命令架构 + ConfigManager + gp 透传 + gp-create 废弃。
+"""
 
 from __future__ import annotations
 
 import argparse
 import importlib.metadata
+import os
 import shutil
 import sys
 
@@ -57,111 +61,43 @@ def print_missing(missing: list[str]) -> None:
 
 
 def build_registry() -> "CommandRegistry":
-    """构建命令注册表，注册所有可用命令。"""
+    """构建命令注册表，注册所有子系统、子命令和别名。
+
+    v0.4.0 架构：
+    - 6 个子系统：card / deploy / config / key / apdu / session
+    - 所有旧 gp-xxx 命令注册为别名（指向子系统子命令 handler）
+    - gp <raw_args> 透传命令
+    - version 独立扁平命令
+    - gp-create 已废弃（不再注册）
+    """
     from scsh.commands import CommandRegistry
-    from scsh.commands.hardware import (
-        cmd_connect,
-        cmd_info,
-        cmd_reconnect,
-        cmd_readers,
-        cmd_reset,
-        cmd_config,
-    )
-    from scsh.commands.apdu import (
-        cmd_send,
-        cmd_select,
-        cmd_get_response,
-        cmd_send_file,
-        cmd_repeat,
-        cmd_timing,
-        cmd_record,
-    )
-    from scsh.commands.gp import (
-        cmd_gp_list,
-        cmd_gp_info,
-        cmd_gp_aid,
-        cmd_gp_scp,
-        cmd_gp_status,
-        cmd_gp_install,
-        cmd_gp_delete,
-        cmd_gp_lock,
-        cmd_gp_unlock,
-        cmd_gp_create,
-        cmd_gp_key,
-        # M4 补充
-        cmd_gp_set_default,
-        cmd_gp_lock_card,
-        cmd_gp_unlock_card,
-        cmd_gp_init_card,
-        cmd_gp_secure_card,
-        cmd_gp_put_key,
-        cmd_gp_delete_key,
-        cmd_gp_store_data,
-        cmd_gp_create_domain,
-        cmd_gp_rename_isd,
-        cmd_gp_load,
-        cmd_gp_uninstall,
-        cmd_gp_set_cplc,
-        cmd_gp_secure_apdu,
-        cmd_gp_mode,
-        cmd_gp_make_selectable,
-    )
-    from scsh.commands.system import cmd_version
 
     registry = CommandRegistry()
 
-    # M0 — 系统命令
+    # ── 子系统 ──
+    from scsh.commands.card import register_card_subsystem
+    from scsh.commands.deploy import register_deploy_subsystem
+    from scsh.commands.config_cmd import register_config_subsystem
+    from scsh.commands.key_cmd import register_key_subsystem
+    from scsh.commands.apdu_subsys import register_apdu_subsystem
+    from scsh.commands.session_cmd import register_session_subsystem
+
+    register_card_subsystem(registry)
+    register_deploy_subsystem(registry)
+    register_config_subsystem(registry)
+    register_key_subsystem(registry)
+    register_apdu_subsystem(registry)
+    register_session_subsystem(registry)
+
+    # ── gp 透传 ──
+    from scsh.commands.passthrough import register_gp_passthrough
+    register_gp_passthrough(registry)
+
+    # ── 扁平命令（不属于任何子系统）──
+    from scsh.commands.system import cmd_version
     registry.register("version", "显示 scsh 版本信息", cmd_version)
 
-    # M1 — 硬件层
-    registry.register("readers", "列出所有读卡器", cmd_readers)
-    registry.register("connect", "连接指定编号的读卡器", cmd_connect)
-    registry.register("reconnect", "断开并重连当前读卡器", cmd_reconnect)
-    registry.register("info", "显示当前卡片信息（ATR、协议）", cmd_info)
-    registry.register("reset", "卡片冷复位", cmd_reset)
-
-    # M2 — APDU 层
-    registry.register("send", "发送原始 APDU 指令", cmd_send)
-    registry.register("select", "SELECT AID 快捷命令", cmd_select)
-    registry.register("get-response", "GET RESPONSE 命令", cmd_get_response)
-    registry.register("send-file", "从文件读取 APDU 并逐条发送", cmd_send_file)
-
-    # M3 — GP 查询
-    registry.register("gp-list", "列出已安装的 ISD/Package/Applet", cmd_gp_list)
-    registry.register("gp-info", "显示 GP 详细信息", cmd_gp_info)
-    registry.register("gp-aid", "注册 AID 别名", cmd_gp_aid)
-    registry.register("gp-scp", "查看安全通道信息", cmd_gp_scp)
-    registry.register("gp-status", "查询卡片生命周期状态", cmd_gp_status)
-
-    # M4 — GP 操作
-    registry.register("gp-install", "安装 CAP 文件", cmd_gp_install)
-    registry.register("gp-delete", "删除 Applet/Package", cmd_gp_delete)
-    registry.register("gp-lock", "锁定 Applet", cmd_gp_lock)
-    registry.register("gp-unlock", "解锁 Applet", cmd_gp_unlock)
-    registry.register("gp-create", "创建 Applet 实例", cmd_gp_create)
-    registry.register("gp-key", "设置 GP 密钥", cmd_gp_key)
-    registry.register("gp-set-default", "设置默认 Applet（NFC）", cmd_gp_set_default)
-    registry.register("gp-lock-card", "锁定卡片", cmd_gp_lock_card)
-    registry.register("gp-unlock-card", "解锁卡片", cmd_gp_unlock_card)
-    registry.register("gp-init-card", "初始化卡片（OP_READY→INITIALIZED）", cmd_gp_init_card)
-    registry.register("gp-secure-card", "安全化卡片（INITIALIZED→SECURED）", cmd_gp_secure_card)
-    registry.register("gp-put-key", "更新 SCP 密钥", cmd_gp_put_key)
-    registry.register("gp-delete-key", "删除指定版本密钥", cmd_gp_delete_key)
-    registry.register("gp-store-data", "写入个人化数据", cmd_gp_store_data)
-    registry.register("gp-create-domain", "创建补充安全域（SSD）", cmd_gp_create_domain)
-    registry.register("gp-rename-isd", "重命名 ISD AID", cmd_gp_rename_isd)
-    registry.register("gp-load", "仅加载 CAP（不分 INSTALL）", cmd_gp_load)
-    registry.register("gp-uninstall", "卸载 CAP/Package", cmd_gp_uninstall)
-    registry.register("gp-set-cplc", "设置 CPLC 个人化日期", cmd_gp_set_cplc)
-    registry.register("gp-secure-apdu", "通过 SCP 安全通道发送 APDU", cmd_gp_secure_apdu)
-    registry.register("gp-mode", "设置 SCP 安全通道模式", cmd_gp_mode)
-    registry.register("gp-make-selectable", "将已安装 Applet 设为可选", cmd_gp_make_selectable)
-
-    # M5 — 辅助功能
-    registry.register("repeat", "重复上一条 APDU", cmd_repeat)
-    registry.register("timing", "切换 APDU 耗时显示", cmd_timing)
-    registry.register("config", "查看/设置配置", cmd_config)
-    registry.register("record", "录制当前会话到文件", cmd_record)
+    # ── 废弃：gp-create 不再注册 ──
 
     return registry
 
@@ -170,14 +106,7 @@ def build_registry() -> "CommandRegistry":
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    """解析命令行参数。
-
-    Args:
-        argv: 参数列表，默认使用 sys.argv。
-
-    Returns:
-        解析后的参数命名空间。
-    """
+    """解析命令行参数。"""
     parser = argparse.ArgumentParser(
         prog="scsh",
         description="Smart Card Shell — 统一的 REPL 交互式智能卡测试工具",
@@ -201,14 +130,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def execute_script(path: str, registry: "CommandRegistry", session: "Session") -> None:
-    """执行脚本文件中的命令。"""
+    """执行脚本文件中的命令。
+
+    v0.4.0: 使用 execute_line() 支持子系统命令。
+    """
     with open(path) as f:
         for line in f:
             stripped = line.strip()
             if not stripped or stripped.startswith("#"):
                 continue
-            name, args = registry.parse_line(stripped)
-            registry.execute(name, args, session)
+            registry.execute_line(stripped, session)
 
 
 # ── 入口 ──────────────────────────────────────────────
@@ -224,22 +155,34 @@ def main() -> None:
         sys.exit(1)
 
     # 第二步：预检通过，加载 scsh 模块（延迟 import）
-    import os
-
     from scsh.transport.pcsc import PCSCTransport
     from scsh.bridge.gp_jar import GPJarBridge
+    from scsh.config import ConfigManager
     from scsh.session import Session
 
     transport = PCSCTransport()
     scsh_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     gp_jar_path = os.path.join(scsh_dir, "tools", "gp.jar")
     gp_bridge = GPJarBridge(jar_path=gp_jar_path) if os.path.isfile(gp_jar_path) else GPJarBridge()
-    session = Session(transport=transport, gp_bridge=gp_bridge)
+
+    # v0.4.0: 初始化 ConfigManager
+    config_mgr = ConfigManager()
+    config_mgr.load_all(scsh_dir)
+
+    session = Session(
+        transport=transport,
+        gp_bridge=gp_bridge,
+        config_manager=config_mgr,
+    )
+
+    # v0.4.0: 同步配置到 session 和 bridge
+    from scsh.commands.config_cmd import _sync_config_to_session
+    _sync_config_to_session(session)
+
     registry = build_registry()
 
     if args.command:
-        name, cmd_args = registry.parse_line(args.command)
-        registry.execute(name, cmd_args, session)
+        registry.execute_line(args.command, session)
         return
 
     if args.file:

@@ -1,3 +1,3 @@
 """Smart Card Shell — 统一的 REPL 交互式智能卡测试工具。"""
 
-__version__ = "0.3.4"
+__version__ = "0.4.0"

@@ -85,16 +85,17 @@ class TestReplCompleter:
 
 
 class TestReplExit:
-    def test_exit_returns_false(self):
-        """exit 命令返回 False 以退出循环。"""
+    def test_exit_sets_running_false(self):
+        """exit 命令设置 _running=False 以退出循环。"""
         reg = CommandRegistry()
         session = MagicMock()
 
         with patch("scsh.repl.PromptSession"):
             from scsh.repl import ScshRepl
             repl = ScshRepl(registry=reg, session=session)
-            result = repl._handle_exit("", session)
-            assert result is False
+            repl._running = True
+            repl._process_line("exit")
+            assert repl._running is False
 
     def test_quit_also_exits(self):
         """quit 也退出。"""
@@ -104,8 +105,9 @@ class TestReplExit:
         with patch("scsh.repl.PromptSession"):
             from scsh.repl import ScshRepl
             repl = ScshRepl(registry=reg, session=session)
-            result = repl._handle_quit("", session)
-            assert result is False
+            repl._running = True
+            repl._process_line("quit")
+            assert repl._running is False
 
 
 class TestReplIntegration:

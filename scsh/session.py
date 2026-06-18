@@ -17,6 +17,7 @@ class Session:
 
     transport: Any  # PCSCTransport (import 推迟以避免循环依赖)
     gp_bridge: Any = None  # GPJarBridge | None
+    config_manager: Any = None  # ConfigManager | None (v0.4.0 新增)
     last_apdu: bytes | None = None
     last_apdu_label: str = ""
     timing_enabled: bool = False
