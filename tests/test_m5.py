@@ -108,22 +108,25 @@ class TestLogCommand:
 
 class TestConfigCommand:
     def test_config_show(self, capsys):
-        """config 显示当前配置。"""
-        from scsh.commands.hardware import cmd_config
+        """config show 显示当前配置（v0.4.0 子系统版本）。"""
+        from scsh.commands.config_cmd import cmd_config_show
         session = MagicMock()
-        session.config = {"default_reader": 0, "gp_key": None}
-        cmd_config("", session)
+        session.config_manager = MagicMock()
+        session.config_manager._merged = {"default_reader": "0"}
+        session.config_manager.get = MagicMock(side_effect=lambda k, d=None: {"default_reader": "0"}.get(k, d))
+        cmd_config_show("", session)
         captured = capsys.readouterr()
-        assert "default_reader" in captured.out or "配置" in captured.out
+        # config show 输出配置信息
+        assert "配置" in captured.out or "default_reader" in captured.out or "config" in captured.out.lower()
 
     def test_config_set(self, capsys):
-        """config set <key> <value> 设置配置。"""
-        from scsh.commands.hardware import cmd_config
+        """config set <key> <value> 设置配置（v0.4.0 子系统版本）。"""
+        from scsh.commands.config_cmd import cmd_config_set
         session = MagicMock()
-        session.config = {}
-        cmd_config("set default_reader 0", session)
-        captured = capsys.readouterr()
-        assert "default_reader" in captured.out or "设置" in captured.out
+        session.config_manager = MagicMock()
+        cmd_config_set("default_reader 0", session)
+        # config set 应调用 config_manager.set
+        session.config_manager.set.assert_called()
 
 
 class TestRecordCommand:

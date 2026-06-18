@@ -138,6 +138,10 @@ CARD_HELP: dict[str, dict[str, Any]] = {
             "gp_op": "STORE DATA (rename)",
             "gp_jar": "--rename-isd <new_AID>",
         },
+        "diagnostic": {
+            "6985": {"cause": "重命名条件不满足", "fix": "需要 SCP 安全通道 + ISD 权限"},
+            "6A80": {"cause": "新 AID 格式错误", "fix": "检查新 AID 的长度和格式"},
+        },
         "usage": [
             "card rename-isd <new_AID>",
             "gp-rename-isd <new_AID>",
@@ -151,6 +155,10 @@ CARD_HELP: dict[str, dict[str, Any]] = {
                 "INSTALL → CLA=84 INS=E6 P1=08 P2=00 Lc=<AID>",
             ],
         },
+        "diagnostic": {
+            "6985": {"cause": "make selectable 条件不满足", "fix": "需要 SCP 安全通道"},
+            "6A82": {"cause": "Applet 未安装", "fix": "先 deploy install 安装 Applet"},
+        },
         "usage": [
             "card make-selectable <AID>",
             "gp-make-selectable <AID>",
@@ -160,6 +168,9 @@ CARD_HELP: dict[str, dict[str, Any]] = {
         "apdu": {
             "gp_op": "STORE DATA (CPLC 日期)",
             "gp_jar": "--set-pre-perso / --set-perso / --today",
+        },
+        "diagnostic": {
+            "6985": {"cause": "CPLC 更新条件不满足", "fix": "需要 SCP 安全通道"},
         },
         "usage": [
             "card set-cplc --pre-perso <hex> --perso <hex>",
@@ -424,6 +435,66 @@ APDU_HELP: dict[str, dict[str, Any]] = {
         "usage": [
             "apdu secure-send <hex>",
             "gp-secure-apdu <hex>（别名）",
+        ],
+    },
+    "repeat": {
+        "apdu": {
+            "gp_op": "重复上一条 APDU",
+            "gp_jar": "无映射（pyscard 直接通信）",
+        },
+        "usage": [
+            "apdu repeat",
+            "repeat（别名）",
+        ],
+    },
+    "timing": {
+        "apdu": {
+            "gp_op": "切换 APDU 耗时显示",
+            "gp_jar": "无映射",
+        },
+        "usage": [
+            "apdu timing         # 切换耗时显示开关",
+            "timing（别名）",
+        ],
+    },
+    "send-file": {
+        "apdu": {
+            "gp_op": "从文件批量发送 APDU",
+            "gp_jar": "无映射",
+        },
+        "usage": [
+            "apdu send-file <文件路径>",
+            "send-file <文件路径>（别名）",
+        ],
+    },
+    "history": {
+        "apdu": {
+            "gp_op": "显示 APDU 历史记录",
+            "gp_jar": "无映射（scsh 编排层）",
+        },
+        "usage": [
+            "apdu history          # 显示最近 20 条",
+            "apdu history --all    # 显示全部",
+            "apdu history <N>      # 显示最近 N 条",
+        ],
+    },
+    "replay": {
+        "apdu": {
+            "gp_op": "重放历史 APDU",
+            "gp_jar": "无映射（scsh 编排层）",
+        },
+        "usage": [
+            "apdu replay <编号>    # 重放指定编号的 APDU",
+            "apdu replay last      # 重放上一条",
+        ],
+    },
+    "search": {
+        "apdu": {
+            "gp_op": "搜索 APDU 历史",
+            "gp_jar": "无映射（scsh 编排层）",
+        },
+        "usage": [
+            "apdu search <关键词>  # 搜索历史中包含关键词的记录",
         ],
     },
 }

@@ -369,19 +369,6 @@ def cmd_gp_unlock(args: str, session: Session) -> None:
     print("解锁成功")
 
 
-@gp_command
-def cmd_gp_create(args: str, session: Session, bridge: Any) -> None:
-    """创建 Applet 实例。"""
-    if not args:
-        print("用法: gp-create <AID>")
-        return
-
-    aid = _resolve_aid(args, session)
-    print(f"正在创建 Applet 实例: {aid} ...")
-    bridge.execute_apdu(f"--create {aid}")
-    print("创建成功")
-
-
 def cmd_gp_key(args: str, session: Session) -> None:
     """设置 GP 密钥。"""
     if not args:

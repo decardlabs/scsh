@@ -1,4 +1,7 @@
-"""硬件层命令：readers / connect / reconnect / info / reset。"""
+"""硬件层命令：readers / connect / reconnect / info / reset。
+
+v0.7.0: 移除旧 cmd_config（已被 config 子系统 ConfigManager 替代）。
+"""
 
 from __future__ import annotations
 
@@ -108,27 +111,3 @@ def cmd_reconnect(args: str, session: Session) -> None:
     print(f"重连成功")
     print(f"ATR: {atr}")
     print(f"协议: {proto}")
-
-
-def cmd_config(args: str, session: Session) -> None:
-    """查看/设置配置。"""
-    parts = args.strip().split()
-
-    if not parts:
-        # 显示所有配置
-        print("当前配置:")
-        for key, val in session.config.items():
-            print(f"  {key}: {val}")
-        return
-
-    if parts[0] == "set" and len(parts) >= 3:
-        key = parts[1]
-        val = parts[2]
-        session.config[key] = val
-        print(f"已设置 {key} = {val}")
-    elif parts[0] == "get" and len(parts) >= 2:
-        key = parts[1]
-        val = session.config.get(key, "未设置")
-        print(f"{key}: {val}")
-    else:
-        print("用法: config [set <key> <value> | get <key>]")

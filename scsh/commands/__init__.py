@@ -152,44 +152,7 @@ class CommandRegistry:
         """返回所有子系统的副本。"""
         return dict(self._subsystems)
 
-    # ── 解析 ──
-
-    @staticmethod
-    def parse_line(line: str) -> tuple[str, str]:
-        """将输入行解析为 (命令名, 参数) 元组。
-
-        保留向后兼容。新代码应使用 execute_line()。
-        """
-        stripped = line.strip()
-        if not stripped:
-            return ("", "")
-        parts = stripped.split(maxsplit=1)
-        name = parts[0]
-        args = parts[1] if len(parts) > 1 else ""
-        return (name, args)
-
-    # ── 执行 ──
-
-    def execute(self, name: str, args: str, session: Session) -> None:
-        """按命令名执行（兼容旧调用方式）。
-
-        仅处理扁平命令，不处理子系统路由。
-        新代码应使用 execute_line()。
-        """
-        name = name.strip()
-        if not name:
-            return
-
-        if name == "help":
-            self._do_help(args)
-            return
-
-        cmd = self.get(name)
-        if cmd is None:
-            print(f"未知命令: {name}。输入 help 查看可用命令。")
-            return
-
-        cmd.handler(args, session)
+    # ── 执行 ──        cmd.handler(args, session)
 
     def execute_line(self, line: str, session: Session) -> None:
         """解析整行输入并执行（支持子系统路由）。

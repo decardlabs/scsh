@@ -423,11 +423,6 @@ class TestExecuteCompat:
         self.reg.execute_line("card list", None)
         assert "card list" in capsys.readouterr().out
 
-    def test_execute_old_style(self, capsys):
-        """旧式 execute(name, args, session) 仍可用。"""
-        self.reg.execute("version", "", None)
-        assert "version" in capsys.readouterr().out
-
     def test_execute_line_alias(self, capsys):
         """execute_line 处理别名。"""
         self.reg.execute_line("gp-list", None)

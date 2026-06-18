@@ -358,7 +358,10 @@ class GPJarBridge:
         return output.strip()
 
     def store_data_chunk(self, data_hex: str) -> str:
-        """分块写入 STORE DATA（大数据场景）。"""
+        """分块写入 STORE DATA（大数据场景）。
+
+        注意：当前无子系统命令直接调用，保留作为 bridge API 供未来使用。
+        """
 
         try:
             output = self._run("--store-data-chunk", data_hex)

@@ -327,6 +327,5 @@ def register_config_subsystem(registry: Any) -> None:
     registry.register_alias("gp-aid", "config", "aid")
     registry.register_alias("gp-mode", "config", "mode")
 
-    # 保留旧 config 命令作为别名（指向 config show）
-    # 旧 config 是扁平命令，新 config show 替代
-    registry.register("config", "(别名 → config show) 查看/设置配置", cmd_config_show)
+    # v0.7.0: 移除旧 config 扁平命令注册
+    # config 输入会先匹配子系统路由，旧扁平注册永远不生效

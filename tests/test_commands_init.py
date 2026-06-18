@@ -1,13 +1,18 @@
-"""测试命令注册表。"""
+"""测试命令注册表。
+
+v0.7.0 update: 移除 execute()/parse_line() 遗留测试，改用 execute_line()。
+"""
 
 import pytest
-from scsh.commands import Command, CommandRegistry
+from unittest.mock import MagicMock
+
+from scsh.commands import Command, CommandRegistry, Subsystem, Session
 
 
 class TestCommand:
     def test_create_command(self):
         """创建命令对象。"""
-        def handler(args, transport):
+        def handler(args, session):
             return "ok"
         cmd = Command(name="test", help_text="测试命令", handler=handler)
         assert cmd.name == "test"
@@ -16,7 +21,7 @@ class TestCommand:
 
     def test_command_repr(self):
         """命令的 repr 包含名称。"""
-        cmd = Command(name="test", help_text="测试", handler=lambda a, t: "")
+        cmd = Command(name="test", help_text="测试", handler=lambda a, s: "")
         assert "test" in repr(cmd)
 
 
@@ -29,7 +34,7 @@ class TestCommandRegistry:
     def test_register(self):
         """注册命令后可通过名称获取。"""
         reg = CommandRegistry()
-        reg.register("test", "测试命令", lambda a, t: "ok")
+        reg.register("test", "测试命令", lambda a, s: "ok")
         cmd = reg.get("test")
         assert cmd is not None
         assert cmd.name == "test"
@@ -42,109 +47,97 @@ class TestCommandRegistry:
     def test_register_duplicate(self):
         """重复注册同一名称覆盖旧命令。"""
         reg = CommandRegistry()
-        reg.register("test", "原版", lambda a, t: "old")
-        reg.register("test", "新版", lambda a, t: "new")
+        reg.register("test", "原版", lambda a, s: "old")
+        reg.register("test", "新版", lambda a, s: "new")
         assert reg.get("test").help_text == "新版"
 
     def test_register_multiple(self):
         """注册多个命令。"""
         reg = CommandRegistry()
-        reg.register("cmd1", "命令1", lambda a, t: "1")
-        reg.register("cmd2", "命令2", lambda a, t: "2")
+        reg.register("cmd1", "命令1", lambda a, s: "1")
+        reg.register("cmd2", "命令2", lambda a, s: "2")
         assert len(reg.all()) == 2
 
     def test_all_returns_copy(self):
         """all() 返回的字典是副本，修改不影响内部。"""
         reg = CommandRegistry()
-        reg.register("test", "t", lambda a, t: "")
+        reg.register("test", "t", lambda a, s: "")
         cmds = reg.all()
         cmds["new"] = "hack"
         assert "new" not in reg.all()
 
-    def test_execute_unknown(self, capsys):
+    def test_execute_line_unknown(self, capsys):
         """执行未知命令打印错误。"""
         reg = CommandRegistry()
-        reg.execute("unknown_cmd", "", None)
+        session = MagicMock()
+        reg.execute_line("unknown_cmd", session)
         captured = capsys.readouterr()
         assert "未知命令" in captured.out
 
-    def test_execute_command(self, capsys):
+    def test_execute_line_command(self, capsys):
         """执行已注册命令。"""
         reg = CommandRegistry()
-        def handler(args, transport):
+        def handler(args, session):
             print(f"执行: {args}")
         reg.register("hello", "测试", handler)
-        reg.execute("hello", "world", None)
+        session = MagicMock()
+        reg.execute_line("hello world", session)
         captured = capsys.readouterr()
         assert "执行: world" in captured.out
 
-    def test_execute_empty(self, capsys):
+    def test_execute_line_empty(self, capsys):
         """空行不执行任何操作。"""
         reg = CommandRegistry()
-        reg.execute("", "", None)
+        session = MagicMock()
+        reg.execute_line("", session)
         captured = capsys.readouterr()
         assert captured.out == ""
 
-    def test_execute_whitespace_only(self, capsys):
+    def test_execute_line_whitespace_only(self, capsys):
         """仅空白行不执行任何操作。"""
         reg = CommandRegistry()
-        reg.execute("   ", "   ", None)
+        session = MagicMock()
+        reg.execute_line("   ", session)
         captured = capsys.readouterr()
         assert captured.out == ""
 
+    def test_execute_line_subsystem(self, capsys):
+        """子系统命令路由正确。"""
+        reg = CommandRegistry()
+        reg.register_subsystem("card", "卡片子系统")
+        def handler(args, session):
+            print(f"card info: {args}")
+        reg.register_subcommand("card", "info", "显示信息", handler)
+        session = MagicMock()
+        reg.execute_line("card info", session)
+        captured = capsys.readouterr()
+        assert "card info" in captured.out
 
-class TestHelpSystem:
-    def test_help_all(self, capsys):
+    def test_execute_line_help(self, capsys):
         """help 命令列出所有已注册命令。"""
         reg = CommandRegistry()
-        reg.register("readers", "列出读卡器", lambda a, t: "")
-        reg.register("connect", "连接读卡器", lambda a, t: "")
-        reg.execute("help", "", None)
+        reg.register("readers", "列出读卡器", lambda a, s: "")
+        reg.register("connect", "连接读卡器", lambda a, s: "")
+        session = MagicMock()
+        reg.execute_line("help", session)
         captured = capsys.readouterr()
         assert "readers" in captured.out
         assert "connect" in captured.out
 
-    def test_help_specific(self, capsys):
+    def test_execute_line_help_specific(self, capsys):
         """help <cmd> 显示该命令详情。"""
         reg = CommandRegistry()
-        reg.register("send", "发送 APDU", lambda a, t: "")
-        reg.execute("help", "send", None)
+        reg.register("send", "发送 APDU", lambda a, s: "")
+        session = MagicMock()
+        reg.execute_line("help send", session)
         captured = capsys.readouterr()
         assert "send" in captured.out
         assert "发送 APDU" in captured.out
 
-    def test_help_unknown(self, capsys):
+    def test_execute_line_help_unknown(self, capsys):
         """help <未知命令> 提示未找到。"""
         reg = CommandRegistry()
-        reg.execute("help", "unknown_cmd", None)
+        session = MagicMock()
+        reg.execute_line("help unknown_cmd", session)
         captured = capsys.readouterr()
         assert "未找到" in captured.out
-
-
-class TestCommandParsing:
-    def test_split_name_and_args(self):
-        """解析命令行为命令名和参数。"""
-        reg = CommandRegistry()
-        name, args = reg.parse_line("send 00A4")
-        assert name == "send"
-        assert args == "00A4"
-
-    def test_split_with_extra_spaces(self):
-        """多余空格不影响解析。"""
-        reg = CommandRegistry()
-        name, args = reg.parse_line("  connect   0  ")
-        assert name == "connect"
-        assert args == "0"
-
-    def test_split_name_only(self):
-        """只有命令名时 args 为空字符串。"""
-        reg = CommandRegistry()
-        name, args = reg.parse_line("readers")
-        assert name == "readers"
-        assert args == ""
-
-    def test_empty_line(self):
-        """空行返回空字符串。"""
-        reg = CommandRegistry()
-        assert reg.parse_line("") == ("", "")
-        assert reg.parse_line("   ") == ("", "")

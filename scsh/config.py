@@ -114,7 +114,10 @@ class ConfigManager:
             f.write(content)
 
     def save_project(self) -> None:
-        """持久化项目配置到 ./scsh.toml。"""
+        """持久化项目配置到 ./scsh.toml。
+
+        注意：当前无子系统命令直接调用，保留作为 ConfigManager API 供未来使用。
+        """
         if not self._project_dir:
             print("未设置项目目录")
             return

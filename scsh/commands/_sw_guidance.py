@@ -62,6 +62,24 @@ def sw_guidance(sw_code: str, context: str = "") -> str | None:
             info = diagnostic[sw_code]
             return f"SW {sw_code}: {info.get('cause', '')} → {info.get('fix', '')}"
 
+    # 兜底：通用 SW 码对照表
+    generic_sw = {
+        "6700": "SW 6700: Lc/Le 长度错误 → 检查 APDU 数据长度参数",
+        "6D00": "SW 6D00: INS 不支持 → 检查指令码，该操作可能不被当前 AID 支持",
+        "6E00": "SW 6E00: CLA 不支持 → 检查 CLA 值，安全通道命令需用 84",
+        "6B00": "SW 6B00: P1/P2 参数错误 → 检查命令参数值",
+        "6A86": "SW 6A86: P1/P2 不正确 → 检查命令参数是否匹配操作要求",
+        "6A88": "SW 6A88: 引用数据未找到 → 检查目标 AID/密钥版本是否存在",
+        "6A84": "SW 6A84: 存储空间不足 → 卡片内存已满，需删除不需要的包",
+        "6100": "SW 61xx: 有响应数据待取 → 执行 apdu get-response 获取",
+    }
+    # 支持模糊匹配（61xx → 6100）
+    result = generic_sw.get(sw_code)
+    if not result and sw_code.startswith("61"):
+        result = generic_sw.get("6100")
+    if result:
+        return result
+
     return None
 
 
