@@ -31,6 +31,7 @@ from scsh.commands._safety import (
     is_irreversible,
     validate_transition,
 )
+from scsh.commands._sw_guidance import sw_tip
 
 
 # ── 工具函数 ──
@@ -83,6 +84,7 @@ def cmd_card_info(args: str, session: Session) -> None:
         list_result = bridge.list()
     except GPBridgeError as exc:
         print(f"card info 失败: {exc}")
+        sw_tip(exc, "card info")
         return
 
     from scsh.commands.gp import _format_gp_info, _format_gp_status
@@ -165,6 +167,7 @@ def cmd_card_lifecycle(args: str, session: Session) -> None:
             print("⚠️ 此操作不可逆，卡片永久无法使用。")
     except GPBridgeError as exc:
         print(f"❌ 操作失败: {exc}")
+        sw_tip(exc, "card lifecycle")
 
 
 def _show_lifecycle_status(session: Session) -> None:
@@ -244,6 +247,7 @@ def cmd_card_applet_state(args: str, session: Session) -> None:
             print(result)
     except GPBridgeError as exc:
         print(f"❌ 设置 Applet 状态失败: {exc}")
+        sw_tip(exc, "card applet-state")
 
 
 def _query_applet_state(aid: str, session: Session) -> None:

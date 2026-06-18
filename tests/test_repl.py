@@ -64,24 +64,36 @@ class TestReplCompleter:
         reg.register("connect", "连接读卡器", lambda a, t: None)
         session = MagicMock()
 
-        with patch("scsh.repl.PromptSession"):
-            from scsh.repl import ScshRepl
-            repl = ScshRepl(registry=reg, session=session)
-            words = repl._get_completions()
-            assert "readers" in words
-            assert "connect" in words
+        from scsh.repl import ScshCompleter
+        completer = ScshCompleter(registry=reg, session=session)
+
+        # 模拟 document：输入第一个词
+        doc = MagicMock()
+        doc.text_before_cursor = ""
+        event = MagicMock()
+
+        completions = list(completer.get_completions(doc, event))
+        texts = [c.text for c in completions]
+        assert "readers" in texts
+        assert "connect" in texts
 
     def test_completer_excludes_builtins(self):
-        """补全器不返回 help/exit 以外的内部命令。"""
+        """补全器包含 help/exit/quit。"""
         reg = CommandRegistry()
         session = MagicMock()
 
-        with patch("scsh.repl.PromptSession"):
-            from scsh.repl import ScshRepl
-            repl = ScshRepl(registry=reg, session=session)
-            words = repl._get_completions()
-            assert "help" in words
-            assert "exit" in words
+        from scsh.repl import ScshCompleter
+        completer = ScshCompleter(registry=reg, session=session)
+
+        doc = MagicMock()
+        doc.text_before_cursor = ""
+        event = MagicMock()
+
+        completions = list(completer.get_completions(doc, event))
+        texts = [c.text for c in completions]
+        assert "help" in texts
+        assert "exit" in texts
+        assert "quit" in texts
 
 
 class TestReplExit:

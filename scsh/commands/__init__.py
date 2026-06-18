@@ -6,6 +6,7 @@
 3. 别名映射：gp-list → card list 的 handler
 
 v0.4.0 新增 Subsystem 二级路由 + 三层 Help（命令层/APDU层/诊断层）。
+v0.7.0 新增 SW 自动引导（GP 命令失败时自动显示诊断帮助）。
 """
 
 from __future__ import annotations

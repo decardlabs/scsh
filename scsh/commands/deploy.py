@@ -19,6 +19,7 @@ from scsh.session import Session
 from scsh.exceptions import GPBridgeError
 from scsh.bridge.gp_jar import GPJarBridge
 from scsh.commands.help_data import DEPLOY_HELP
+from scsh.commands._sw_guidance import sw_tip
 
 
 def _get_bridge(session: Session) -> Any | None:
@@ -182,6 +183,7 @@ def cmd_deploy_install(args: str, session: Session) -> None:
                 # 如果不存在，继续安装
                 if "6A82" not in str(exc):
                     print(f"[force] 删除失败: {exc}")
+                    sw_tip(exc, "deploy delete")
                     return
                 print("[force] 包不存在，直接安装...")
         else:
@@ -200,6 +202,7 @@ def cmd_deploy_install(args: str, session: Session) -> None:
             bridge.load(cap_path)
         except GPBridgeError as exc:
             print(f"加载失败: {exc}")
+            sw_tip(exc, "deploy load")
             return
         print("CAP 文件已加载。")
         return
@@ -227,6 +230,7 @@ def cmd_deploy_install(args: str, session: Session) -> None:
             )
         except GPBridgeError as exc:
             print(f"安装失败: {exc}")
+            sw_tip(exc, "deploy install")
             return
         print("安装成功。")
         return
@@ -247,6 +251,7 @@ def cmd_deploy_install(args: str, session: Session) -> None:
                 print("[Step 1] 包可能已加载，尝试继续...")
             else:
                 print(f"加载失败: {exc}")
+                sw_tip(exc, "deploy load")
                 return
 
         print("[Step 1] LOAD 完成。")
@@ -278,6 +283,7 @@ def cmd_deploy_install(args: str, session: Session) -> None:
             )
         except GPBridgeError as exc:
             print(f"安装失败: {exc}")
+            sw_tip(exc, "deploy install")
             return
 
         print("[Step 2] INSTALL 完成。")
@@ -295,6 +301,7 @@ def cmd_deploy_install(args: str, session: Session) -> None:
         )
     except GPBridgeError as exc:
         print(f"安装失败: {exc}")
+        sw_tip(exc, "deploy install")
         return
 
     print("安装成功。")
@@ -318,6 +325,7 @@ def cmd_deploy_delete(args: str, session: Session) -> None:
         bridge.delete(aid)
     except GPBridgeError as exc:
         print(f"删除失败: {exc}")
+        sw_tip(exc, "deploy delete")
         return
 
     print("删除成功。")
@@ -340,6 +348,7 @@ def cmd_deploy_load(args: str, session: Session) -> None:
         bridge.load(args.strip())
     except GPBridgeError as exc:
         print(f"加载失败: {exc}")
+        sw_tip(exc, "deploy load")
         return
 
     print("CAP 文件已加载。")
@@ -373,6 +382,7 @@ def cmd_deploy_plan(args: str, session: Session) -> None:
         card_state = bridge.list()
     except GPBridgeError as exc:
         print(f"无法获取卡片状态: {exc}")
+        sw_tip(exc, "card list")
         return
 
     # 计算差异
@@ -427,6 +437,7 @@ def cmd_deploy_provision(args: str, session: Session) -> None:
         card_state = bridge.list()
     except GPBridgeError as exc:
         print(f"无法获取卡片状态: {exc}")
+        sw_tip(exc, "card list")
         return
 
     # 计算差异
@@ -490,6 +501,7 @@ def cmd_deploy_provision(args: str, session: Session) -> None:
             )
         except GPBridgeError as exc:
             print(f"[Provision] 安装 {pkg.name} 失败: {exc}")
+            sw_tip(exc, "deploy install")
             if step_mode:
                 confirm = input("继续下一个? [y/n]: ").strip().lower()
                 if confirm not in ("y", "yes"):

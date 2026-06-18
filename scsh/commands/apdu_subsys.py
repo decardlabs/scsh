@@ -8,6 +8,9 @@ apdu — APDU 交互子系统
   repeat       重复上一条
   timing       耗时开关
   secure-send  SCP 安全通道发送
+  history      显示 APDU 历史记录
+  replay       重放指定编号的 APDU
+  search       搜索 APDU 历史
 """
 
 from __future__ import annotations
@@ -28,6 +31,11 @@ def register_apdu_subsystem(registry: Any) -> None:
         cmd_timing,
     )
     from scsh.commands.gp import cmd_gp_secure_apdu
+    from scsh.commands.apdu_history import (
+        cmd_apdu_history,
+        cmd_apdu_replay,
+        cmd_apdu_search,
+    )
 
     registry.register_subsystem("apdu", "APDU 交互子系统")
 
@@ -51,6 +59,35 @@ def register_apdu_subsystem(registry: Any) -> None:
     )
     registry.register_subcommand(
         "apdu", "secure-send", "通过 SCP 安全通道发送 APDU", cmd_gp_secure_apdu, APDU_HELP["secure-send"]
+    )
+    registry.register_subcommand(
+        "apdu", "history", "显示 APDU 历史记录", cmd_apdu_history,
+        {
+            "usage": [
+                "apdu history          # 显示最近 20 条",
+                "apdu history <N>      # 显示最近 N 条",
+                "apdu history --all    # 显示全部",
+            ],
+        },
+    )
+    registry.register_subcommand(
+        "apdu", "replay", "重放指定编号的 APDU", cmd_apdu_replay,
+        {
+            "usage": [
+                "apdu replay <编号>    # 重放指定编号",
+                "apdu replay last      # 重放最后一条",
+            ],
+        },
+    )
+    registry.register_subcommand(
+        "apdu", "search", "搜索 APDU 历史", cmd_apdu_search,
+        {
+            "usage": [
+                "apdu search <关键词>  # 搜索包含关键词的 APDU",
+                "apdu search 6985      # 搜索所有返回 6985 的记录",
+                "apdu search SELECT    # 搜索所有 SELECT 命令",
+            ],
+        },
     )
 
     # 别名：旧扁平命令名 → subsystem handler
