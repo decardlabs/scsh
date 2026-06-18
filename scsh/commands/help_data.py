@@ -58,12 +58,13 @@ CARD_HELP: dict[str, dict[str, Any]] = {
     "lifecycle": {
         "apdu": {
             "gp_op": "SET STATUS",
-            "gp_jar": "--initialize-card / --secure-card / --lock-card / --unlock-card",
+            "gp_jar": "--initialize-card / --secure-card / --lock-card / --unlock-card / --terminate-card",
             "apdu_flow": [
-                "card lifecycle init:   SET STATUS → CLA=80 INS=F0 P1=80 P2=00 Lc=01 <01>",
-                "card lifecycle secure: SET STATUS → CLA=80 INS=F0 P1=40 P2=00 Lc=01 <03>",
-                "card lifecycle lock:   SET STATUS → CLA=80 INS=F0 P1=40 P2=00 Lc=01 <7F>",
-                "card lifecycle unlock: SET STATUS → CLA=80 INS=F0 P1=40 P2=00 Lc=01 <5F>",
+                "card lifecycle init:      SET STATUS → CLA=80 INS=F0 P1=80 P2=00 Lc=01 <01>",
+                "card lifecycle secure:    SET STATUS → CLA=80 INS=F0 P1=40 P2=00 Lc=01 <03>",
+                "card lifecycle lock:      SET STATUS → CLA=80 INS=F0 P1=40 P2=00 Lc=01 <7F>",
+                "card lifecycle unlock:    SET STATUS → CLA=80 INS=F0 P1=40 P2=00 Lc=01 <5F>",
+                "card lifecycle terminate: SET STATUS → CLA=80 INS=F0 P1=40 P2=00 Lc=01 <FF> ⚠️不可逆",
             ],
         },
         "diagnostic": {
@@ -71,11 +72,12 @@ CARD_HELP: dict[str, dict[str, Any]] = {
             "6A80": {"cause": "数据错误", "fix": "SET STATUS 参数不正确"},
         },
         "usage": [
-            "card lifecycle          # 显示当前生命周期状态",
+            "card lifecycle          # 显示当前生命周期状态 + 状态机图",
             "card lifecycle init     # OP_READY → INITIALIZED",
             "card lifecycle secure   # INITIALIZED → SECURED",
             "card lifecycle lock     # SECURED → CARD_LOCKED",
             "card lifecycle unlock   # CARD_LOCKED → SECURED",
+            "card lifecycle terminate # CARD_LOCKED → TERMINATED ⚠️不可逆",
         ],
     },
     "applet-state": {

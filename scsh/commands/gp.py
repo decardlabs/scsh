@@ -489,6 +489,18 @@ def cmd_gp_secure_card(args: str, session: Session, bridge: Any) -> None:
     print("卡片已安全化（INITIALIZED → SECURED）。")
 
 
+@gp_command
+def cmd_gp_terminate_card(args: str, session: Session, bridge: Any) -> None:
+    """终止卡片（CARD_LOCKED → TERMINATED）。⚠️不可逆"""
+    from scsh.commands._safety import confirm_irreversible
+
+    if not confirm_irreversible("terminate", session):
+        return
+
+    bridge.terminate_card()
+    print("卡片已终止（不可逆）。")
+
+
 def cmd_gp_put_key(args: str, session: Session) -> None:
     """更新 SCP 密钥。
 

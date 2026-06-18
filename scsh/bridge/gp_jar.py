@@ -274,6 +274,34 @@ class GPJarBridge:
             raise GPBridgeError(f"GP secure-card 失败: {exc}")
         return output.strip()
 
+    def terminate_card(self) -> str:
+        """终止卡片（CARD_LOCKED → TERMINATED）。
+
+        ⚠️ 此操作不可逆！执行后卡片将永久无法使用。
+        """
+
+        try:
+            output = self._run("--terminate-card")
+        except GPBridgeError as exc:
+            raise GPBridgeError(f"GP terminate-card 失败: {exc}")
+        return output.strip()
+
+    def set_applet_status(self, aid: str, status: int) -> str:
+        """通过 SET STATUS APDU 设置 Applet 级状态。
+
+        Args:
+            aid: Applet AID（十六进制）。
+            status: 1=SELECTABLE, 2=LOCKED, 3=BLOCKED。
+        """
+        # SET STATUS (Applet): CLA=80 INS=E6 P2=02 Lc=<AID_len+1> <AID> <status_byte>
+        aid_bytes = bytes.fromhex(aid)
+        apdu_hex = f"80E60200{len(aid_bytes) + 1:02X}{aid}{status:02X}"
+        try:
+            output = self.send_secure_apdu(apdu_hex)
+        except GPBridgeError as exc:
+            raise GPBridgeError(f"SET STATUS (Applet {aid}) 失败: {exc}")
+        return output.strip()
+
     def put_key(self, master_key: str | None = None,
                 key_enc: str | None = None, key_mac: str | None = None,
                 key_dek: str | None = None, key_ver: str | None = None,

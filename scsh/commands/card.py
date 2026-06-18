@@ -3,7 +3,7 @@
 card — 卡片管理子系统
   list         列出 ISD/Package/Applet
   info         完整卡片信息（info+scp+status 合并）
-  lifecycle    卡片生命周期管理 (init/secure/lock/unlock)
+  lifecycle    卡片生命周期管理 (init/secure/lock/unlock/terminate)
   applet-state Applet 级状态控制 (selectable/locked/blocked)
   store-data   写入个人化数据
   create-domain 创建 SSD
@@ -11,7 +11,8 @@ card — 卡片管理子系统
   make-selectable 设为可选
   set-cplc     设置 CPLC 日期
 
-v0.4.0: lifecycle/applet-state 使用现有 handler 桥接，v0.5.0 增强。
+v0.5.0: lifecycle 增加 terminate + 状态机验证 + 不可逆操作保护。
+       applet-state 增加 blocked + SET STATUS APDU + 状态查询。
 """
 
 from __future__ import annotations
@@ -21,6 +22,15 @@ from typing import Any
 from scsh.exceptions import GPBridgeError
 from scsh.session import Session
 from scsh.commands.help_data import CARD_HELP
+from scsh.commands._safety import (
+    LIFECYCLE_STATES,
+    LIFECYCLE_ACTION_MAP,
+    APPLET_STATES,
+    APPLET_STATE_NAMES,
+    confirm_irreversible,
+    is_irreversible,
+    validate_transition,
+)
 
 
 # ── 工具函数 ──
@@ -37,7 +47,6 @@ def _get_bridge(session: Session) -> Any | None:
 def _resolve_aid(args: str, session: Session) -> str:
     """解析 AID 参数，支持别名展开。"""
     aliases = getattr(session, "aid_aliases", {})
-    # 也从 config_manager 获取别名
     config_mgr = getattr(session, "config_manager", None)
     if config_mgr:
         config_aliases = config_mgr.get("aliases", {})
@@ -46,7 +55,19 @@ def _resolve_aid(args: str, session: Session) -> str:
     return aliases.get(args.strip(), args.strip())
 
 
-# ── 新 handler：合并 card info ──
+def _get_current_lifecycle(session: Session) -> str:
+    """查询当前卡片生命周期状态。"""
+    bridge = _get_bridge(session)
+    if not bridge:
+        return "未知"
+    try:
+        list_result = bridge.list()
+        return list_result.get("isd_state") or "未知"
+    except GPBridgeError:
+        return "未知"
+
+
+# ── card info ──
 
 def cmd_card_info(args: str, session: Session) -> None:
     """card info — 合并 gp-info + gp-scp + gp-status 三合一。
@@ -74,98 +95,192 @@ def cmd_card_info(args: str, session: Session) -> None:
         print(line)
 
 
-# ── 新 handler：card lifecycle ──
+# ── card lifecycle ──
 
 def cmd_card_lifecycle(args: str, session: Session) -> None:
-    """card lifecycle — 卡片生命周期管理。
+    """card lifecycle — 卡片生命周期管理（v0.5.0 增强）。
 
-    无参数时显示当前生命周期状态。
-    有参数时执行对应状态转换。
+    无参数：显示当前状态 + 状态机图 + 允许的转换。
+    有参数：执行状态转换，验证合法性，不可逆操作需二次确认。
+
+    状态机: OP_READY → INITIALIZED → SECURED → CARD_LOCKED → TERMINATED
     """
-    from scsh.commands.gp import (
-        cmd_gp_init_card,
-        cmd_gp_secure_card,
-        cmd_gp_lock_card,
-        cmd_gp_unlock_card,
-    )
-
     if not args:
-        # 显示当前状态
-        bridge = _get_bridge(session)
-        if not bridge:
-            return
-        try:
-            list_result = bridge.list()
-        except GPBridgeError as exc:
-            print(f"查询失败: {exc}")
-            return
-        state = list_result.get("isd_state") or "未知"
-        state_desc = {
-            "OP_READY": "出厂就绪，可用默认密钥连接和管理",
-            "INITIALIZED": "已初始化，LOAD/INSTALL 受限",
-            "SECURED": "安全状态，需要密钥认证才能管理",
-            "CARD_LOCKED": "卡片已锁定，仅可解锁",
-            "TERMINATED": "已终止（不可逆）",
-        }.get(state, "")
-        print(f"当前生命周期: {state}")
-        if state_desc:
-            print(f"  → {state_desc}")
-        print("")
-        print("可用操作: init, secure, lock, unlock")
+        _show_lifecycle_status(session)
         return
 
-    action = args.strip().split()[0]  # 只取第一个词
-    actions = {
-        "init": cmd_gp_init_card,
-        "secure": cmd_gp_secure_card,
-        "lock": cmd_gp_lock_card,
-        "unlock": cmd_gp_unlock_card,
-    }
-
-    handler = actions.get(action)
-    if handler:
-        handler("", session)
-    else:
+    action = args.strip().split()[0]
+    target_state = LIFECYCLE_ACTION_MAP.get(action)
+    if not target_state:
         print(f"未知生命周期操作: {action}")
-        print("可用操作: init, secure, lock, unlock")
+        print("可用操作: init, secure, lock, unlock, terminate")
+        return
+
+    # 查询当前状态
+    current_state = _get_current_lifecycle(session)
+    if current_state == "未知":
+        print("无法查询当前卡片状态。继续执行可能不安全。")
+        print("输入 'yes' 继续:")
+        try:
+            answer = input("> ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print("操作已取消。")
+            return
+        if answer != "yes":
+            print("操作已取消。")
+            return
+
+    # 验证状态转换合法性
+    allowed, reason = validate_transition(current_state, action)
+    if not allowed:
+        print(f"❌ {reason}")
+        return
+
+    # 不可逆操作确认
+    if is_irreversible(action):
+        if not confirm_irreversible(action, session):
+            return
+
+    # 执行
+    bridge = _get_bridge(session)
+    if not bridge:
+        return
+
+    try:
+        if action == "init":
+            bridge.initialize_card()
+            print(f"✅ 卡片已初始化（{current_state} → INITIALIZED）")
+        elif action == "secure":
+            bridge.secure_card()
+            print(f"✅ 卡片已安全化（{current_state} → SECURED）")
+        elif action == "lock":
+            bridge.lock_card()
+            print(f"✅ 卡片已锁定（{current_state} → CARD_LOCKED）")
+        elif action == "unlock":
+            bridge.unlock_card()
+            print(f"✅ 卡片已解锁（{current_state} → SECURED）")
+        elif action == "terminate":
+            bridge.terminate_card()
+            print(f"✅ 卡片已终止（{current_state} → TERMINATED）")
+            print("⚠️ 此操作不可逆，卡片永久无法使用。")
+    except GPBridgeError as exc:
+        print(f"❌ 操作失败: {exc}")
 
 
-# ── 新 handler：card applet-state（v0.5.0 增强，v0.4.0 桥接现有 lock/unlock）─
+def _show_lifecycle_status(session: Session) -> None:
+    """显示当前生命周期状态 + 状态机图 + 允许的转换。"""
+    current = _get_current_lifecycle(session)
+
+    # 当前状态
+    state_info = LIFECYCLE_STATES.get(current)
+    if state_info:
+        print(f"当前生命周期: {current}")
+        print(f"  → {state_info['desc']}")
+    else:
+        print(f"当前生命周期: {current}（非标准状态）")
+
+    # 状态机图
+    print("")
+    print("生命周期状态机:")
+    print("  OP_READY ──init──→ INITIALIZED ──secure──→ SECURED ──lock──→ CARD_LOCKED ──terminate──→ TERMINATED")
+    print("     ↑                  │                    │↑                     │")
+    print("     └──────────────────┘           unlock──┘└──unlock─────────────┘")
+
+    # 允许的转换
+    allowed_next = state_info.get("allowed_next", []) if state_info else []
+    if allowed_next:
+        print("")
+        print(f"从 {current} 可执行的转换:")
+        for next_state in allowed_next:
+            # 反查 action
+            for act, target in LIFECYCLE_ACTION_MAP.items():
+                if target == next_state:
+                    print(f"  card lifecycle {act}  →  {next_state}")
+    elif current == "TERMINATED":
+        print("")
+        print("卡片已终止，无可执行操作。")
+    else:
+        print("")
+        print("当前状态无已知允许的转换。")
+
+
+# ── card applet-state ──
 
 def cmd_card_applet_state(args: str, session: Session) -> None:
-    """card applet-state — Applet 级状态控制。
+    """card applet-state — Applet 级状态控制（v0.5.0 增强）。
 
-    v0.4.0 桥接版：selectable → gp-unlock, locked → gp-lock
-    v0.5.0 增强：直接 SET STATUS APDU + blocked 状态
+    通过 SET STATUS APDU 直接设置 Applet 级状态。
+    支持 selectable/locked/blocked 三种状态。
+    无状态参数时从 card list 查询当前状态。
     """
-    from scsh.commands.gp import cmd_gp_lock, cmd_gp_unlock
-
     if not args:
         print("用法: card applet-state <AID> [selectable|locked|blocked]")
         return
 
     parts = args.strip().split()
-    if len(parts) < 1:
-        print("用法: card applet-state <AID> [selectable|locked|blocked]")
-        return
-
     aid = _resolve_aid(parts[0], session)
 
     if len(parts) == 1:
-        # 只查看，不设置（v0.5.0 实现）
-        print(f"Applet {aid} — 状态查询将在 v0.5.0 实现")
+        # 查询当前状态
+        _query_applet_state(aid, session)
         return
 
-    state = parts[1].lower()
-    if state == "locked":
-        cmd_gp_lock(aid, session)
-    elif state == "selectable":
-        cmd_gp_unlock(aid, session)
-    elif state == "blocked":
-        print("blocked 状态将在 v0.5.0 实现（需要 SET STATUS APDU）")
-    else:
-        print(f"未知 Applet 状态: {state}")
+    state_name = parts[1].lower()
+    status_code = APPLET_STATES.get(state_name)
+    if not status_code:
+        print(f"未知 Applet 状态: {state_name}")
         print("可用状态: selectable, locked, blocked")
+        return
+
+    bridge = _get_bridge(session)
+    if not bridge:
+        return
+
+    try:
+        result = bridge.set_applet_status(aid, status_code)
+        state_label = APPLET_STATE_NAMES.get(status_code, state_name)
+        print(f"✅ Applet {aid} 状态已设置为: {state_label}")
+        if result:
+            print(result)
+    except GPBridgeError as exc:
+        print(f"❌ 设置 Applet 状态失败: {exc}")
+
+
+def _query_applet_state(aid: str, session: Session) -> None:
+    """从 card list 结果中查询 Applet 当前状态。"""
+    bridge = _get_bridge(session)
+    if not bridge:
+        return
+
+    try:
+        list_result = bridge.list()
+    except GPBridgeError as exc:
+        print(f"查询失败: {exc}")
+        return
+
+    # 在 packages 中搜索目标 AID
+    found = False
+    for pkg in list_result.get("packages", []):
+        for app in pkg.get("applets", []):
+            if app["aid"] == aid:
+                state = app.get("state") or "未知"
+                print(f"Applet {aid}")
+                print(f"  状态: {state}")
+                # 状态说明
+                state_desc = {
+                    "SELECTABLE": "可选 — 正常状态，可被 SELECT",
+                    "LOCKED": "锁定 — 不可 SELECT，需 card applet-state selectable 解锁",
+                    "BLOCKED": "阻塞 — 完全禁用",
+                    "PERSONALIZED": "已个人化",
+                }.get(state, "")
+                if state_desc:
+                    print(f"  → {state_desc}")
+                found = True
+                break
+
+    if not found:
+        print(f"Applet {aid} 未在卡片上找到。")
+        print("可用 card list 查看所有已安装 Applet。")
 
 
 # ── 注册函数 ──
@@ -214,7 +329,7 @@ def register_card_subsystem(registry: Any) -> None:
         "card", "set-cplc", "设置 CPLC 个人化日期", cmd_gp_set_cplc, CARD_HELP["set-cplc"]
     )
 
-    # 别名（保留旧 gp-xxx 命令名）
+    # 别名
     registry.register_alias("gp-list", "card", "list")
     registry.register_alias("gp-info", "card", "info")
     registry.register_alias("gp-scp", "card", "info", "(别名 → card info) SCP 信息（已合并到 card info）")
@@ -223,6 +338,7 @@ def register_card_subsystem(registry: Any) -> None:
     registry.register_alias("gp-secure-card", "card", "lifecycle")
     registry.register_alias("gp-lock-card", "card", "lifecycle")
     registry.register_alias("gp-unlock-card", "card", "lifecycle")
+    registry.register_alias("gp-terminate-card", "card", "lifecycle", "(别名 → card lifecycle terminate) ⚠️不可逆")
     registry.register_alias("gp-lock", "card", "applet-state", "(别名 → card applet-state) 锁定 Applet")
     registry.register_alias("gp-unlock", "card", "applet-state", "(别名 → card applet-state) 解锁 Applet")
     registry.register_alias("gp-store-data", "card", "store-data")
