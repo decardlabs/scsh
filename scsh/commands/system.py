@@ -29,9 +29,9 @@ def cmd_version(args: str, session: Session) -> None:
 
 def _get_pyscard_version() -> str:
     try:
-        import pyscard
+        from importlib.metadata import version
 
-        return pyscard.__version__
+        return version("pyscard")
     except Exception:
         return "(未安装)"
 
@@ -39,7 +39,13 @@ def _get_pyscard_version() -> str:
 def _print_java_version() -> None:
     import subprocess
 
-    for bin in ("java", "/usr/bin/java", "/usr/local/bin/java"):
+    candidates = (
+        "/opt/homebrew/opt/openjdk/bin/java",
+        "/usr/local/bin/java",
+        "/usr/bin/java",
+        "java",
+    )
+    for bin in candidates:
         try:
             result = subprocess.run(
                 [bin, "-version"],

@@ -100,16 +100,17 @@ def cmd_gp_info(args: str, session: Session) -> None:
 # ── CPLC 厂商名称映射 ──────────────────────────────────────
 
 IC_FABRICATOR_NAMES = {
-    "0081": "NXP (原 Philips)",
-    "4470": "Infineon (原 Siemens)",
-    "4250": "Samsung",
-    "4950": "STMicroelectronics",
-    "0440": "Renesas",
+    "0000": "未指定",
     "0040": "Toshiba",
-    "2070": "Gemalto / Thales",
-    "1090": "IBM",
-    "4254": "SK Hynix",
+    "0081": "NXP (原 Philips)",
     "0090": "G&D (Giesecke & Devrient)",
+    "0440": "Renesas (原 Hitachi)",
+    "1090": "IBM",
+    "2070": "Gemalto / Thales",
+    "4250": "Samsung",
+    "4254": "SK Hynix",
+    "4470": "Infineon (原 Siemens)",
+    "4950": "STMicroelectronics",
     "5010": "Goldpac",
     "FFFF": "测试芯片",
 }
@@ -122,12 +123,15 @@ OS_ID_NAMES = {
 }
 
 ICC_MANUFACTURER_NAMES = {
+    "0000": "未指定",
+    "0040": "Toshiba",
     "0081": "NXP",
-    "4470": "Infineon",
-    "4250": "Samsung",
-    "4950": "STMicroelectronics",
+    "0090": "G&D (Giesecke & Devrient)",
+    "1090": "IBM",
     "2070": "Gemalto / Thales",
-    "0090": "G&D",
+    "4250": "Samsung",
+    "4470": "Infineon",
+    "4950": "STMicroelectronics",
     "5010": "Goldpac",
 }
 
@@ -288,18 +292,6 @@ def _format_gp_status(list_result: dict, info_result: dict) -> list[str]:
     lines.append(f"Card Status: {state}")
     if state_desc:
         lines.append(f"  → {state_desc}")
-
-    # 详细版本信息
-    lines.append("")
-    lines.append("版本信息:")
-    if info_result.get("jc_version"):
-        lines.append(f"  JavaCard:    {info_result['jc_version']}")
-    if info_result.get("gp_version"):
-        lines.append(f"  GP 版本:     {info_result['gp_version']}")
-    if info_result.get("scp"):
-        lines.append(f"  SCP:         {info_result['scp']}")
-
-    # ISD 信息
     if list_result.get("isd"):
         lines.append(f"  ISD AID:     {list_result['isd']}")
 

@@ -69,12 +69,20 @@ class GPJarBridge:
 
     @staticmethod
     def _find_java() -> str:
-        """查找 java 可执行文件，优先使用 JAVA_HOME。"""
+        """查找 java 可执行文件，优先使用 JAVA_HOME。
+
+        macOS 上 /usr/bin/java 是 stub（不工作的占位符），
+        需要优先查找 Homebrew 安装的 OpenJDK 或真实运行时。
+        """
         java_home = os.environ.get("JAVA_HOME")
         if java_home:
             candidate = os.path.join(java_home, "bin", "java")
             if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
                 return candidate
+        # macOS: 优先 Homebrew OpenJDK
+        homebrew_java = "/opt/homebrew/opt/openjdk/bin/java"
+        if os.path.isfile(homebrew_java) and os.access(homebrew_java, os.X_OK):
+            return homebrew_java
         system_java = shutil.which("java")
         if system_java:
             return system_java

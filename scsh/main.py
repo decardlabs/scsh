@@ -34,8 +34,16 @@ def _check_python_packages() -> list[str]:
 def _check_system_services() -> list[str]:
     """检查系统服务和外部工具（pcscd、java 等）。"""
     missing: list[str] = []
+    # macOS: PC/SC 内置于 PCSC.framework XPC 服务，无独立 pcscd 二进制
+    # Linux: 需要 pcsc-lite 提供的 pcscd 服务
     if not shutil.which("pcscd"):
-        missing.append("PC/SC 服务 (pcscd)  —  brew install pcsc-lite")
+        if sys.platform == "darwin":
+            # macOS 上 PCSC.framework 存在即表示 PC/SC 可用
+            pcsc_framework = "/System/Library/Frameworks/PCSC.framework"
+            if not os.path.isdir(pcsc_framework):
+                missing.append("PC/SC 服务 (pcscd)  —  brew install pcsc-lite")
+        else:
+            missing.append("PC/SC 服务 (pcscd)  —  brew install pcsc-lite")
     java = shutil.which("java")
     if not java:
         missing.append("Java Runtime       —  用于 GP 功能 (brew install java)")
