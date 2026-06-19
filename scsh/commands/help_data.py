@@ -276,6 +276,14 @@ DEPLOY_HELP: dict[str, dict[str, Any]] = {
             "  ? 卡上有但 Profile 中没有",
         ],
     },
+    "show": {
+        "apdu": [],
+        "diagnostic": {},
+        "usage": "deploy show  # 显示当前 Profile 蓝图文件内容",
+        "notes": [
+            "deploy show  # 显示 scsh.toml 文件内容",
+        ],
+    },
 }
 
 

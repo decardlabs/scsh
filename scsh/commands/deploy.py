@@ -354,6 +354,27 @@ def cmd_deploy_load(args: str, session: Session) -> None:
     print("CAP 文件已加载。")
 
 
+# ── deploy show（v0.7.4 新增）─────────────────────────────
+
+
+def cmd_deploy_show(args: str, session: Session) -> None:
+    """deploy show — 显示当前 Profile 蓝图内容。"""
+    profile_path = _find_profile_path(session)
+    if not profile_path:
+        print("未找到 scsh.toml Profile 文件。")
+        return
+
+    try:
+        with open(profile_path) as f:
+            content = f.read()
+    except OSError as exc:
+        print(f"读取失败: {exc}")
+        return
+
+    print(f"# Profile: {profile_path}")
+    print(content.rstrip())
+
+
 # ── deploy plan（v0.6.0 新增）─────────────────────────────
 
 
@@ -542,6 +563,10 @@ def register_deploy_subsystem(registry: Any) -> None:
     registry.register_subcommand(
         "deploy", "plan", "显示 Profile 预期变更",
         cmd_deploy_plan, DEPLOY_HELP["plan"]
+    )
+    registry.register_subcommand(
+        "deploy", "show", "显示当前 Profile 蓝图内容",
+        cmd_deploy_show, DEPLOY_HELP["show"]
     )
 
     # 别名
