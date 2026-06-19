@@ -302,9 +302,7 @@ class ScshRepl:
 
     def _prompt(self) -> str:
         idx = getattr(self.session.transport, '_reader_index', None)
-        if not isinstance(idx, int):
-            idx = "N"
-        return f"[scsh:{idx}] > "
+        return f"[scsh:{idx}] > " if isinstance(idx, int) else "[scsh] > "
 
     def _process_line(self, line: str) -> None:
         """处理一行用户输入。

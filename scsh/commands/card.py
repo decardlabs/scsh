@@ -45,6 +45,22 @@ def _get_bridge(session: Session) -> Any | None:
     return bridge
 
 
+def _auto_connect(session: Session) -> None:
+    """GP 命令成功后，若 transport 未连接则自动连到第一个有卡的读卡器。"""
+    transport = session.transport
+    if getattr(transport, "_reader_index", None) is not None:
+        return
+    try:
+        readers = transport.list_readers()
+        for i, r in enumerate(readers):
+            if r.get("card_present"):
+                transport.connect(i)
+                print(f"→ 自动连接到: {r['name']}\n")
+                return
+    except Exception:
+        pass
+
+
 def _resolve_aid(args: str, session: Session) -> str:
     """解析 AID 参数，支持别名展开。"""
     aliases = getattr(session, "aid_aliases", {})
@@ -95,6 +111,8 @@ def cmd_card_info(args: str, session: Session) -> None:
     print("")
     for line in _format_gp_status(list_result, info_result):
         print(line)
+
+    _auto_connect(session)
 
 
 # ── card lifecycle ──
