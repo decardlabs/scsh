@@ -566,6 +566,75 @@ def cmd_deploy_provision(args: str, session: Session) -> None:
     print("[Provision] 完成。")
 
 
+# ── deploy review（v0.7.6 新增）────────────────────────────
+
+
+def cmd_deploy_review(args: str, session: Session) -> None:
+    """deploy review — 交互式审核 Profile 中未定义的包。"""
+    profile_path = _find_profile_path(session)
+    if not profile_path:
+        print("未找到 scsh.toml Profile 文件。")
+        return
+
+    try:
+        from scsh.profile import Profile, diff_profile_vs_card
+        profile = Profile.from_toml(profile_path)
+    except Exception as exc:
+        print(f"Profile 加载失败: {exc}")
+        return
+
+    _apply_profile_config(profile, session)
+
+    bridge = _get_bridge(session)
+    if not bridge:
+        return
+
+    try:
+        card_state = bridge.list()
+    except GPBridgeError as exc:
+        print(f"无法获取卡片状态: {exc}")
+        sw_tip(exc, "card list")
+        return
+
+    diffs = diff_profile_vs_card(profile, card_state)
+    to_review = [d for d in diffs if d["action"] == "?"]
+
+    if not to_review:
+        print("[Review] 卡片上所有包均已定义在 Profile 中，无需审核。")
+        return
+
+    print(f"[Review] 发现 {len(to_review)} 个包在卡片上但 Profile 中未定义:\n")
+    for d in to_review:
+        print(f"  ? {d['aid']}")
+
+    for d in to_review:
+        aid = d["aid"]
+        print(f"\n{aid}")
+        while True:
+            choice = input("  操作: [d] 从卡片删除 / [a] 加入蓝图 / [s] 跳过 (d/a/s): ").strip().lower()
+            if choice in ("d", "delete"):
+                try:
+                    bridge.delete(aid)
+                    print(f"  ✅ 已从卡片删除")
+                except GPBridgeError as exc:
+                    print(f"  ❌ 删除失败: {exc}")
+                break
+            elif choice in ("a", "add"):
+                try:
+                    with open(profile_path, "a") as f:
+                        f.write(f"\n[packages.{aid}]\naid = \"{aid}\"\n")
+                    print(f"  ✅ 已加入蓝图")
+                except OSError as exc:
+                    print(f"  ❌ 写入失败: {exc}")
+                break
+            elif choice in ("s", "skip"):
+                break
+            else:
+                print("  请输入 d, a 或 s")
+
+    print("\n[Review] 审核完成。")
+
+
 # ── 注册 ──────────────────────────────────────────────────
 
 
@@ -598,6 +667,10 @@ def register_deploy_subsystem(registry: Any) -> None:
     registry.register_subcommand(
         "deploy", "show", "显示当前 Profile 蓝图内容",
         cmd_deploy_show, DEPLOY_HELP["show"]
+    )
+    registry.register_subcommand(
+        "deploy", "review", "交互式审核 Profile 中未定义的包",
+        cmd_deploy_review, DEPLOY_HELP["review"]
     )
 
     # 别名

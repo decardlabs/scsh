@@ -284,6 +284,17 @@ DEPLOY_HELP: dict[str, dict[str, Any]] = {
             "deploy show  # 显示 scsh.toml 文件内容",
         ],
     },
+    "review": {
+        "apdu": [],
+        "diagnostic": {},
+        "usage": "deploy review  # 交互式审核卡片上多余包",
+        "notes": [
+            "对每个未定义的包可选择:",
+            "  [d] 从卡片删除",
+            "  [a] 加入蓝图 scsh.toml",
+            "  [s] 跳过",
+        ],
+    },
 }
 
 
