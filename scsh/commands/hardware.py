@@ -46,15 +46,41 @@ def cmd_readers(args: str, session: Session) -> None:
 
 def cmd_connect(args: str, session: Session) -> None:
     """连接到指定读卡器。"""
-    if not args:
-        print("用法: connect <读卡器编号>")
-        return
+    if args:
+        try:
+            index = int(args)
+        except ValueError:
+            print("错误: 读卡器编号必须是数字")
+            return
+    else:
+        # 无参数时自动选择
+        try:
+            readers = session.transport.list_readers()
+        except NoReadersError:
+            print("未检测到读卡器")
+            return
 
-    try:
-        index = int(args)
-    except ValueError:
-        print("错误: 读卡器编号必须是数字")
-        return
+        if not readers:
+            print("没有已连接的读卡器")
+            return
+
+        if len(readers) == 1:
+            index = 0
+        else:
+            # 多个读卡器：找唯一有卡的
+            card_present = [i for i, r in enumerate(readers) if r.get("card_present")]
+            if len(card_present) == 1:
+                index = card_present[0]
+            elif len(card_present) == 0:
+                print("有多个读卡器但均无卡，请指定读卡器编号:")
+                for i, r in enumerate(readers):
+                    print(f"  [{i}] {r['name']}")
+                return
+            else:
+                print("多个读卡器均有卡，请指定读卡器编号:")
+                for i in card_present:
+                    print(f"  [{i}] {readers[i]['name']}")
+                return
 
     try:
         result = session.transport.connect(index)
