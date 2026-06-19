@@ -31,6 +31,34 @@ def _get_bridge(session: Session) -> Any | None:
     return bridge
 
 
+def _apply_profile_config(profile: Any, session: Session) -> None:
+    """将 Profile 引用的连接配置注入 bridge。
+
+    根据 profile.use_config 名称（如 "default"），
+    从 ConfigManager 读取对应的 key/scp/mode 并注入 GP 桥接。
+    """
+    config_mgr = getattr(session, "config_manager", None)
+    if not config_mgr:
+        return
+
+    bridge = getattr(session, "gp_bridge", None)
+    if not bridge:
+        return
+
+    prefix = f"configs.{profile.use_config}" if profile.use_config != "default" else "connection"
+
+    key = config_mgr.get(f"{prefix}.key") or config_mgr.get("connection.key")
+    scp = config_mgr.get(f"{prefix}.scp") or config_mgr.get("connection.scp")
+    mode = config_mgr.get(f"{prefix}.mode") or config_mgr.get("connection.mode")
+
+    if key and hasattr(bridge, "set_key"):
+        bridge.set_key(key)
+    if scp and hasattr(bridge, "set_scp_type"):
+        bridge.set_scp_type(scp)
+    if mode and hasattr(bridge, "set_mode_param"):
+        bridge.set_mode_param(mode)
+
+
 def _resolve_aid(args: str, session: Session) -> str:
     """解析 AID 参数，支持别名展开。"""
     aliases = getattr(session, "aid_aliases", {})
@@ -393,6 +421,9 @@ def cmd_deploy_plan(args: str, session: Session) -> None:
     except Exception as exc:
         print(f"Profile 加载失败: {exc}")
         return
+
+    # 应用 profile 引用的连接配置
+    _apply_profile_config(profile, session)
 
     bridge = _get_bridge(session)
     if not bridge:

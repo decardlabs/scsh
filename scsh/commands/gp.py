@@ -137,9 +137,9 @@ ICC_MANUFACTURER_NAMES = {
 
 
 def _lookup_name(mapping: dict[str, str], val: str) -> str:
-    """查找厂商名，找不到则原样返回。"""
+    """查找厂商名，找不到则标注未知。"""
     name = mapping.get(val)
-    return f"{val} ({name})" if name else val
+    return f"{val} ({name})" if name else f"{val} (未知厂商)"
 
 
 def _format_gp_info(result: dict) -> list[str]:

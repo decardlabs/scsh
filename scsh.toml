@@ -1,0 +1,36 @@
+# ── scsh 部署蓝图 (Profile) ──
+# 定义卡片的目标状态，供 deploy plan / deploy provision 使用
+#
+# 使用方法:
+#   deploy plan       → 对比蓝图与卡片当前状态的差异
+#   deploy provision  → 按蓝图自动安装/编排
+
+# ── 卡片配置 ──
+[card]
+isd_aid = "A000000151000000"       # ISD 的 AID（用 card info 查看）
+target_lifecycle = "OP_READY"      # 目标生命周期状态
+use_config = "default"             # 引用 config 中的连接配置名
+
+# ── AID 别名（可选）──
+# 在 packages 中用别名代替完整 AID
+[aliases]
+isd   = "A000000151000000"
+myapp = "A000000001000001"
+
+# ── 要部署的包 ──
+# 每个 [packages.<名称>] 定义一组 CAP 安装规格
+# 最少只需 cap 字段，其他都有默认值
+[packages.helloworld]
+cap = "build/HelloWorld.cap"       # CAP 文件路径（相对 scsh.toml 所在目录）
+aid = "A000000001000001"           # 包 AID（用于对比卡片状态）
+default = true                      # 安装后设为默认选中的 Applet
+
+# 带完整参数的包示例
+[packages.fido2]
+cap         = "build/FIDO2Applet.cap"
+aid         = "A000000002000001"    # 包 AID
+applet_aid  = "A00000000200000101" # Applet AID（与包 AID 不同时指定）
+params      = "00C90101"           # 安装参数（TLV 十六进制）
+privs       = "02"                 # 安装权限（十六进制或字符串）
+default     = false                # 设为默认
+force       = false                # 强制重装（先删再装）
